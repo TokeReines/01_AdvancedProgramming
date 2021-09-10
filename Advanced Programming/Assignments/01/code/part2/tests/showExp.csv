@@ -1,0 +1,2 @@
+showExp (Mul (Cst 2) (Add (Cst 3) (Cst 4))),2*(3+4)
+showExp (Add (Mul (Cst 2) (Cst 3)) (Cst 4)),(2*3)+4
