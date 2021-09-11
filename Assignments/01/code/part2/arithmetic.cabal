@@ -33,6 +33,7 @@ test-suite my-test-suite
       arithmetic
     , base
     , containers
+    , hunit-tools
     , tasty
     , tasty-hspec
     , tasty-hunit
