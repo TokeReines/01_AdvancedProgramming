@@ -7,13 +7,14 @@ data Direction = North | South | East | West
 
 move :: Direction -> Pos -> Pos
 move North (x,y) = (x, y+1)
+move South  (x,y) = (x, y-1)
+move East  (x,y) = (x+1, y)
 move West  (x,y) = (x-1, y)
--- complete the definition
 
 moves :: [Direction] -> Pos -> Pos
-moves = undefined
--- replace with actual definition of moves, and likewise for the
--- other 'undefined' functions
+moves [] p = p
+moves [d] p = move d p -- Check if this functions is neccesary
+moves (d:ds) p = moves ds (move d p)
 
 data Nat = Zero | Succ Nat
   deriving (Eq, Show, Read, Ord)
