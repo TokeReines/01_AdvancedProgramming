@@ -48,6 +48,7 @@ extendEnv v n r = \v' -> if v' == v then Just n else r v'
 
 
 evalFull :: Exp -> Env -> Integer
+evalFull (Cst x) _ = x
 evalFull If {test=t, yes=y, no=n} e = if evalFull t e /= 0 then evalFull y e else evalFull n e
 evalFull (Var v) e = case e v of 
     Just a -> a
@@ -70,7 +71,6 @@ evalFull (Div x y) e
 evalFull (Pow x y) e
   | evalFull y e == 0 = evalFull x e * 0 + 1 
   | otherwise = evalFull x e ^ evalFull y e
-evalFull x _ = evalSimple x
 
 evalErr :: Exp -> Env -> Either ArithError Integer
 evalErr (Cst x) _ = Right x
