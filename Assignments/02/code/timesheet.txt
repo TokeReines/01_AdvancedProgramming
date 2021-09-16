@@ -13,7 +13,7 @@ Installation: 0m # normally covered under Assignment 1; fill in otherwise
 Reading:
 Lectures:
 Exploration:
-Warmup:
+Warmup: 4h 45m 
 Development:
 Tests:
 Report:
