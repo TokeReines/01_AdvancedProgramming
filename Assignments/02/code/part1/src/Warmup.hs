@@ -12,12 +12,14 @@ newtype RWSP a = RWSP {runRWSP :: ReadData -> StateData ->
                                     (a, WriteData, StateData)}
 
 -- complete the definitions
+-- Slide 10 for normal state (s/StateData)
+-- slide 19 for Read-only state (r/ReadData)
+-- slide 21 for Accumulating state (w/WriteData)
 instance Monad RWSP where
   return a = RWSP (\r s -> (a, mempty, s))
-  m >>= f = RWSP (\r s -> let (a, w1, s1) = runRWSP m r s in runRWSP (f a) r s)
-
-  -- m >>= f = let (a, w1, s1) = runRWSP m
-  --           in RWSP ((f a), w1, s1)
+  m >>= f = RWSP (\r s0 -> let (a, w1, s1) = runRWSP m r s0 
+                               (b, w2, s2) = runRWSP (f a) r s1
+                           in (b, w1 <> w2, s2))
 
 -- No need to touch these
 instance Functor RWSP where
@@ -31,39 +33,37 @@ askP = RWSP (\r s -> (r, mempty, s))  -- freebie
 
 -- runs computation with new read data
 withP :: ReadData -> RWSP a -> RWSP a
-withP r' m = undefined
+withP r' m = RWSP (\r s -> runRWSP m r' s)
 
 -- adds some write data to accumulator
 tellP :: WriteData -> RWSP ()
-tellP w = undefined
+tellP w = RWSP (\r s -> ((), w, s))
 
 -- returns current state data
 getP :: RWSP StateData
-getP = undefined
+getP = RWSP (\r s -> (s, mempty, s))
 
 -- overwrites the state data
 putP :: StateData -> RWSP ()
-putP s' = undefined
+putP s' = RWSP (\r s -> ((), mempty , s'))
 
 -- sample computation using all features
 type Answer = String
 sampleP :: RWSP Answer
 sampleP =
   do r1 <- askP
-     return $ "r1 = " ++ show r1
-    --  r2 <- withP 5 askP
-    --  tellP "Hello, "
-    --  s1 <- getP
-    --  putP (s1 + 1.0)
-    --  tellP "world!"
-    --  return $ "r1 = " ++ show r1 ++ ", r2 = " ++ show r2 ++ ", s1 = " ++ show s1
+     r2 <- withP 5 askP
+     tellP "Hello, "
+     s1 <- getP
+     putP (s1 + 1.0)
+     tellP "world!"
+     return $ "r1 = " ++ show r1 ++ ", r2 = " ++ show r2 ++ ", s1 = " ++ show s1
+
 
 type Result = (Answer, WriteData, StateData)
 
 expected :: Result
-expected = ("r1 = 4", "", 3.5)
--- expected = ("r1 = 4, r2 = 5, s1 = 3.5", "Hello, world!", 4.5)
-
+expected = ("r1 = 4, r2 = 5, s1 = 3.5", "Hello, world!", 4.5)
 testP = runRWSP sampleP 4 3.5 == expected
 
 -- Version of RWS monad with errors
