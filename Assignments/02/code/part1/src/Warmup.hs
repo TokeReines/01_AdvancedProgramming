@@ -11,10 +11,6 @@ type StateData = Double
 newtype RWSP a = RWSP {runRWSP :: ReadData -> StateData ->
                                     (a, WriteData, StateData)}
 
--- complete the definitions
--- Slide 10 for normal state (s/StateData)
--- slide 19 for Read-only state (r/ReadData)
--- slide 21 for Accumulating state (w/WriteData)
 instance Monad RWSP where
   return a = RWSP (\r s -> (a, mempty, s))
   m >>= f = RWSP (\r s0 -> let (a, w1, s1) = runRWSP m r s0 
@@ -74,16 +70,15 @@ newtype RWSE a = RWSE {runRWSE :: ReadData -> StateData ->
 -- Hint: here you may want to exploit that "Either ErrorData" is itself a monad
 instance Monad RWSE where
   return a = RWSE (\r s -> Right (a, mempty, s))
-  -- m >>= f = undefined 
-  m >>= f = RWSE (\r s0 -> case runRWSE m r s0 of
-                            Left e -> Left e
-                            Right (a, w1, s1) ->  case runRWSE (f a) r s1 of
-                              Left e -> Left e
-                              Right (b, w2, s2) -> Right (b, w1 <> w2, s2))
-
-  -- m >>= f = RWSP (\r s0 -> let (a, w1, s1) = runRWSP m r s0 
-  --                              (b, w2, s2) = runRWSP (f a) r s1
-  --                          in (b, w1 <> w2, s2))
+  -- m >>= f = RWSE (\r s0 -> case runRWSE m r s0 of
+  --                           Left e -> Left e
+  --                           Right (a, w1, s1) ->  case runRWSE (f a) r s1 of
+  --                             Left e -> Left e
+  --                             Right (b, w2, s2) -> Right (b, w1 <> w2, s2))
+  -- m >>= f = RWSE (\r s0 ->  runRWSE m r s0 >>= (\(a, w1, s1) -> runRWSE (f a) r s1 >>= (\(b, w2, s2) -> Right (b, w1 <> w2, s2) )))
+  m >>= f = RWSE (\r s0 ->  do (a, w1, s1) <- runRWSE m r s0
+                               (b, w2, s2) <- runRWSE (f a) r s1
+                               Right (b, w1 <> w2, s2))
 
 instance Functor RWSE where
   fmap = liftM
@@ -117,11 +112,6 @@ sampleE =
      putE (s1 + 1.0)
      tellE "world!"
      return $ "r1 = " ++ show r1 ++ ", r2 = " ++ show r2 ++ ", s1 = " ++ show s1
-
-sampleE1 :: RWSE Answer
-sampleE1 =
-  do r1 <- askE
-     return $ "r1 = " ++ show r1
 
 -- sample computation that may throw an error
 sampleE2 :: RWSE Answer
