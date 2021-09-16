@@ -73,8 +73,17 @@ newtype RWSE a = RWSE {runRWSE :: ReadData -> StateData ->
 
 -- Hint: here you may want to exploit that "Either ErrorData" is itself a monad
 instance Monad RWSE where
-  return a = undefined
-  m >>= f = undefined
+  return a = RWSE (\r s -> Right (a, mempty, s))
+  -- m >>= f = undefined 
+  m >>= f = RWSE (\r s0 -> case runRWSE m r s0 of
+                            Left e -> Left e
+                            Right (a, w1, s1) ->  case runRWSE (f a) r s1 of
+                              Left e -> Left e
+                              Right (b, w2, s2) -> Right (b, w1 <> w2, s2))
+
+  -- m >>= f = RWSP (\r s0 -> let (a, w1, s1) = runRWSP m r s0 
+  --                              (b, w2, s2) = runRWSP (f a) r s1
+  --                          in (b, w1 <> w2, s2))
 
 instance Functor RWSE where
   fmap = liftM
@@ -82,22 +91,22 @@ instance Applicative RWSE where
   pure = return; (<*>) = ap
 
 askE :: RWSE ReadData
-askE = undefined
+askE = RWSE (\r s -> Right (r, mempty, s))
 
 withE :: ReadData -> RWSE a -> RWSE a
-withE r' m = undefined
+withE r' m = RWSE (\r s -> runRWSE m r' s)
 
 tellE :: WriteData -> RWSE ()
-tellE w = undefined
+tellE w = RWSE (\r s -> Right ((), w, s))
 
 getE :: RWSE StateData
-getE = undefined
+getE = RWSE (\r s -> Right (s, mempty, s))
 
 putE :: StateData -> RWSE ()
-putE s' = undefined
+putE s' = RWSE (\r s -> Right ((), mempty , s'))
 
 throwE :: ErrorData -> RWSE a
-throwE e = undefined
+throwE e = RWSE (\r s -> Left e)
 
 sampleE :: RWSE Answer
 sampleE =
@@ -108,6 +117,11 @@ sampleE =
      putE (s1 + 1.0)
      tellE "world!"
      return $ "r1 = " ++ show r1 ++ ", r2 = " ++ show r2 ++ ", s1 = " ++ show s1
+
+sampleE1 :: RWSE Answer
+sampleE1 =
+  do r1 <- askE
+     return $ "r1 = " ++ show r1
 
 -- sample computation that may throw an error
 sampleE2 :: RWSE Answer
