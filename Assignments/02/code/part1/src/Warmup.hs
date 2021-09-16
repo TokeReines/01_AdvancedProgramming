@@ -70,12 +70,6 @@ newtype RWSE a = RWSE {runRWSE :: ReadData -> StateData ->
 -- Hint: here you may want to exploit that "Either ErrorData" is itself a monad
 instance Monad RWSE where
   return a = RWSE (\_r s -> Right (a, mempty, s))
-  -- m >>= f = RWSE (\r s0 -> case runRWSE m r s0 of
-  --                           Left e -> Left e
-  --                           Right (a, w1, s1) ->  case runRWSE (f a) r s1 of
-  --                             Left e -> Left e
-  --                             Right (b, w2, s2) -> Right (b, w1 <> w2, s2))
-  -- m >>= f = RWSE (\r s0 ->  runRWSE m r s0 >>= (\(a, w1, s1) -> runRWSE (f a) r s1 >>= (\(b, w2, s2) -> Right (b, w1 <> w2, s2) )))
   m >>= f = RWSE (\r s0 ->  do (a, w1, s1) <- runRWSE m r s0
                                (b, w2, s2) <- runRWSE (f a) r s1
                                Right (b, w1 <> w2, s2))
