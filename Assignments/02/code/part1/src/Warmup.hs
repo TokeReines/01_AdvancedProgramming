@@ -12,10 +12,10 @@ newtype RWSP a = RWSP {runRWSP :: ReadData -> StateData ->
                                     (a, WriteData, StateData)}
 
 instance Monad RWSP where
-  return a = RWSP (\_r s -> (a, mempty, s))
+  return a = RWSP (\_r s -> (a, mempty, s)) 
   m >>= f = RWSP (\r s0 -> let (a, w1, s1) = runRWSP m r s0 
-                               (b, w2, s2) = runRWSP (f a) r s1
-                           in (b, w1 <> w2, s2))
+                               (b, w2, s2) = runRWSP (f a) r s1 
+                           in (b, w1 <> w2, s2)) 
 
 -- No need to touch these
 instance Functor RWSP where
@@ -80,7 +80,7 @@ instance Applicative RWSE where
   pure = return; (<*>) = ap
 
 askE :: RWSE ReadData
-askE = RWSE (\r s -> Right (r, mempty, s))
+askE = RWSE (\r s -> Right (r, mempty, s))  
 
 withE :: ReadData -> RWSE a -> RWSE a
 withE r' m = RWSE (\_r s -> runRWSE m r' s)
@@ -90,9 +90,9 @@ tellE w = RWSE (\_r s -> Right ((), w, s))
 
 getE :: RWSE StateData
 getE = RWSE (\_r s -> Right (s, mempty, s))
-
+  
 putE :: StateData -> RWSE ()
-putE s' = RWSE (\_r _s -> Right ((), mempty , s'))
+putE s' = RWSE(\_r _s -> Right ((), mempty, s') )
 
 throwE :: ErrorData -> RWSE a
 throwE e = RWSE (\_r _s -> Left e)
