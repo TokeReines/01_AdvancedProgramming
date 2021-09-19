@@ -15,13 +15,6 @@ type Env = [(VName, Value)]
 data RunError = EBadVar VName | EBadFun FName | EBadArg String
   deriving (Eq, Show)
 
--- newtype RWSE a = RWSE {runRWSE :: ReadData -> StateData -> Either ErrorData (a, WriteData, StateData)}
--- instance Monad RWSE where
---   return a = RWSE (\_r s -> Right (a, mempty, s))
---   m >>= f = RWSE (\r s0 ->  do (a, w1, s1) <- runRWSE m r s0
---                                (b, w2, s2) <- runRWSE (f a) r s1
---                                Right (b, w1 <> w2, s2))
-
 newtype Comp a = Comp {runComp :: Env -> (Either RunError a, [String]) }
 instance Monad Comp where
   return a = Comp (\_e -> (Right a, []))
