@@ -1,7 +1,5 @@
 *.code-workspace
-<<<<<<< HEAD
-.stack-work
 .DS_Store
-=======
 .stack-work
->>>>>>> Assignment 2 started
+stack.yaml.lock
+boa.cabal
