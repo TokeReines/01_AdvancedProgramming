@@ -15,11 +15,20 @@ type Env = [(VName, Value)]
 data RunError = EBadVar VName | EBadFun FName | EBadArg String
   deriving (Eq, Show)
 
-newtype Comp a = Comp {runComp :: Env -> (Either RunError a, [String]) }
+-- newtype RWSE a = RWSE {runRWSE :: ReadData -> StateData -> Either ErrorData (a, WriteData, StateData)}
+-- instance Monad RWSE where
+--   return a = RWSE (\_r s -> Right (a, mempty, s))
+--   m >>= f = RWSE (\r s0 ->  do (a, w1, s1) <- runRWSE m r s0
+--                                (b, w2, s2) <- runRWSE (f a) r s1
+--                                Right (b, w1 <> w2, s2))
 
+newtype Comp a = Comp {runComp :: Env -> (Either RunError a, [String]) }
 instance Monad Comp where
-  return = undefined
-  (>>=) = undefined
+  return a = Comp (\_e -> (Right a, []))
+  Comp m >>= f = Comp (\e -> 
+    case m e of
+      (Right a, out) -> runComp (f a) e
+      (Left re, out) -> (Left re, out))
 
 -- You shouldn't need to modify these
 instance Functor Comp where
@@ -29,10 +38,13 @@ instance Applicative Comp where
 
 -- Operations of the monad
 abort :: RunError -> Comp a
-abort = undefined
+abort err = Comp (\e -> (Left err, []))
 
 look :: VName -> Comp Value
-look = undefined
+look v = Comp (\e -> case lookup v e of 
+                      Just x -> (Right x, [])
+                      Nothing -> (Left $ EBadVar v, [])
+                      )
 
 withBinding :: VName -> Value -> Comp a -> Comp a
 withBinding = undefined
