@@ -9,7 +9,6 @@ module BoaInterp
 
 import BoaAST
 import Control.Monad
-import Distribution.Simple.Utils (xargs)
 
 type Env = [(VName, Value)]
 
@@ -19,25 +18,17 @@ data RunError = EBadVar VName | EBadFun FName | EBadArg String
 newtype Comp a = Comp {runComp :: Env -> (Either RunError a, [String])}
 
 instance Monad Comp where
-  return a = Comp (\e -> (Right a, []))
-  m >>= f = Comp (\e -> case runComp m e of
-                          (Left err, out) -> (Left err, out)
-                          (Right a, out) -> runComp (f a) e)
-  -- Comp m >>= f = Comp (\e -> 
-  --   case m e of
-  --     (Right a, out) -> runComp (f a) e
-  --     (Left re, out) -> (Left re, out))
+  return a = Comp (\_e -> (Right a, []))
+  m >>= f = Comp (\e -> do (_, out) <- runComp m e
+                           (_, out') <- runComp (f a) e
+                           Right (_, out <> out'))
+  -- m >>= f = RWSE (\r s0 ->  do (a, w1, s1) <- runRWSE m r s0
+  --                              (b, w2, s2) <- runRWSE (f a) r s1
+  --                              Right (b, w1 <> w2, s2))
 
-  
-      
-  -- Comp m >>= f = Comp (\e -> let (a, o) = runComp m e
-  --                                (a', o') = runComp (f a) e
-  --                             in case (a' o') of
-  --     (Right a, out) -> (Right a, )
-  --     (Left re, out) -> (Left re, out))
-
---  Comp >>= f = Comp (\e -> do (a, out) <- runComp m e
---                           Right ())
+  -- m >>= f = Comp (\e -> case runComp m e of
+  --                         (Left err, out) -> (Left err, out)
+  --                         (Right a, _) -> runComp (f a) e)
 
 -- You shouldn't need to modify these
 instance Functor Comp where
@@ -47,7 +38,7 @@ instance Applicative Comp where
 
 -- Operations of the monad
 abort :: RunError -> Comp a
-abort err = Comp (\e -> (Left err, []))
+abort err = Comp (\_e -> (Left err, []))
 
 look :: VName -> Comp Value
 look v = Comp (\e -> case lookup v e of 
@@ -57,7 +48,7 @@ look v = Comp (\e -> case lookup v e of
 -- Runs  the  computation m with x bound  to v,  
 -- in  addition  to  any  othercurrent bindings
 withBinding :: VName -> Value -> Comp a -> Comp a
-withBinding x v m = Comp(\e -> runComp m (e ++ [(x, v)])) -- Might give duplicate variables in env
+withBinding x v m = Comp(\e -> runComp m ([(x, v)] ++ e)) -- Might give duplicate variables in env
 
 output :: String -> Comp ()
 output s = Comp (\_e -> (Right (), [s]))
@@ -129,7 +120,6 @@ apply f v
 --                                     in Comp (\e -> (Right (ListVal v), [])) -- [0, 1..3] -> [1,2,3]. z is 0-indexed]
 -- | otherwise = undefined
   
-
 -- Main functions of interpreter
 -- eval e is the computation that evaluates the expression e in the current environment and returns its value
 eval :: Exp -> Comp Value
@@ -143,17 +133,17 @@ eval (Oper o x y) = do
     Right v -> return v
 eval (Not x) = do
   x' <- eval x
-  if truthy x' then return TrueVal else return FalseVal
--- eval Call f x 
--- eval (List []) = return (ListVal [])
--- eval (List [x]) = eval x
--- eval (List (x:xs)) = do
+  if truthy x' then return FalseVal else return TrueVal
+eval (List []) = return (ListVal [])
+eval (List x) = do
+  x' <- mapM eval x
+  return (ListVal x')
+eval (Call f xs) = do
+  xs' <- mapM eval xs
+  apply f xs'
+-- eval Call f [x] = do
 --   x' <- eval x
---   xs' <- eval (List xs)
--- eval Call f [Exp] 
--- eval Call f [] = undefined
--- eval Call f [x]
---   | f == "print" = 
+
 -- eval Call f [x:xs] 
 --   | f == "print" = 
 -- eval List [Exp] = undefined
@@ -163,19 +153,31 @@ eval _ = undefined
 -- Likewise, exec p is the computation arising from executing the program (or program fragment) p, with 
 -- no nominal return value, but with any side effects in p still taking place in the computation.
 exec :: Program -> Comp () -- Program = [Stmt]
-exec p = undefined
+exec [] = return ()
+exec [st]
+  | (SDef v e) <- st = 
+    do eval e
+       exec []      
+  | (SExp e) <- st = 
+    do eval e
+       exec []
+exec (h:ss)
+  | (SDef v e) <- h = 
+      do c <- eval e
+         withBinding v c (exec ss)           
+  | (SExp e) <- h = do 
+      v <- eval e
+      exec ss
+         
 
+-- [Stmt: SDef "x" = 2+2, Stmt: SExp Add "x" 2]
+
+-- withBinding :: VName -> Value -> Comp a -> Comp a
 -- Finally, execute p explicitly returns the list of output lines, and the error message
 -- (if relevant) resulting from executing p in the initial environment, which contains
 -- no variable bindings. (For implementing execute (only), you are allowed to use the 
 -- runComp projection of the monad type.)
 execute :: Program -> ([String], Maybe RunError)
-execute p = ([show p], Nothing )
-
-  -- do (_, _) <- runComp (exec p) []
-  --    return (y, x)
-
-
-
-
-          
+execute p = case runComp (exec p) [] of
+  (Left err, out) -> (out, Just err)
+  (Right a, out) ->  (out, Nothing)
