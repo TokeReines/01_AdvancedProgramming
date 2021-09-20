@@ -11,7 +11,7 @@ main :: IO ()
 main = defaultMain $ localOption (mkTimeout 1000000) tests
 
 tests :: TestTree
-tests = testGroup "Tests" [operateTest, stringifyValuesTest]
+tests = testGroup "Tests" [operateTest, stringifyValuesTest, lookTest]
 
 operateTest = testGroup "operate tests" 
   [ testCase "operate Plus (IntVal 2) (IntVal 2)" $ operate Plus (IntVal 2) (IntVal 2) @?= Right (IntVal 4)
@@ -22,6 +22,12 @@ operateTest = testGroup "operate tests"
   , testCase "*operate Plus FalseVal (IntVal 2)" $ operate Plus FalseVal (IntVal 2) @?= Left "Only integers allowed for Plus Op"
   , testCase "*operate Plus (StringVal \"Hello\") (IntVal 2)" $ operate Plus (StringVal "Hello") (IntVal 2) @?= Left "Only integers allowed for Plus Op"
   ]
+
+lookTest = testGroup "lookTest" 
+  [testCase "*look \"x\"" $ 
+    do x <- look "x" 
+       x @?= Left (EBadVar "x")
+  ]  
 
 stringifyValuesTest = testGroup "stringifyValues Tests" 
   [ testCase "stringifyValues [TrueVal, TrueVal, TrueVal]" $ stringifyValues [TrueVal, TrueVal, TrueVal] @?= "True True True"
