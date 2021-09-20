@@ -2,13 +2,14 @@
 
 module BoaInterp
   (Env, RunError(..), Comp(..),
-   abort, look, withBinding, output,
+   abort, look, withBinding, output, stringifyValues,
    truthy, operate, apply,
    eval, exec, execute)
   where
 
 import BoaAST
 import Control.Monad
+import Distribution.Simple.Utils (xargs)
 
 type Env = [(VName, Value)]
 
@@ -16,6 +17,7 @@ data RunError = EBadVar VName | EBadFun FName | EBadArg String
   deriving (Eq, Show)
 
 newtype Comp a = Comp {runComp :: Env -> (Either RunError a, [String])}
+
 instance Monad Comp where
   return a = Comp (\e -> (Right a, []))
   m >>= f = Comp (\e -> case runComp m e of
@@ -71,10 +73,10 @@ truthy (ListVal x) = (not . null) x
 
 operate :: Op -> Value -> Value -> Either String Value
 operate Plus (IntVal x) (IntVal y) = (Right . IntVal) (x + y)
+operate Plus _ _ = Left "Only integers allowed for Plus Op"
 -- Right(IntVal(FuncA(FuncB(x + y))))
 -- operate Plus (StringVal x StringVal y) = Left x ++ y
 operate _ _ _ = undefined
--- operate Plus _ _ = Left "Only integers allowed for addition"
 -- operate Minus (IntVal x) (IntVal y) = (Right . IntVal) (x - y)
 -- operate Times (IntVal x) (IntVal y) = (Right . IntVal) (x * y)
 -- operate Div (IntVal x) (IntVal y) = (Right . IntVal) (x `div` y)
@@ -93,9 +95,31 @@ operate _ _ _ = undefined
 --   | elem TrueVal l = Right TrueVal
 --   | otherwise = Right FalseVal
 
+
+stringifyValues :: [Value] -> String
+stringifyValues [] = ""
+stringifyValues [v]
+  | NoneVal <- v = "None"
+  | TrueVal <- v = "True"
+  | FalseVal <- v = "False"
+  | (IntVal i) <- v = show i
+  | (StringVal s) <- v = s
+  | (ListVal []) <- v = "[]"
+  | (ListVal [x]) <- v = "[" ++ stringifyValues [x]  ++ "]"
+  | (ListVal (x:xs)) <- v = "[" ++ stringifyValues [x]  ++ ", " ++ stringifyValues xs ++ "]"
+stringifyValues (v:vs) =  stringifyValues [v] ++ " " ++ stringifyValues vs
+
+
+-- [IntVal 42, StringVal "foo", ListVal [TrueVal, ListVal []], IntVal (-1)]
+
 apply :: FName -> [Value] -> Comp Value
-apply f v = undefined 
- --  | f == "print" = Comp (\e -> (Right v, [])) -- Stringify list of Value into monad output?
+apply f v
+  | f == "print" = do
+      let s = stringifyValues v
+      output s
+      return NoneVal
+  | f == "range" = undefined
+  | otherwise = abort (EBadFun f)
 -- | f == "range" = case v of 
 --   [IntVal x] -> let v = map (\x -> IntVal x) [0..1] 
 --                 in Comp (\e -> (Right (ListVal v), []))
@@ -109,19 +133,23 @@ apply f v = undefined
 -- Main functions of interpreter
 -- eval e is the computation that evaluates the expression e in the current environment and returns its value
 eval :: Exp -> Comp Value
-eval _ = undefined 
--- eval (Const v) = Comp (\e -> (Right v, [])) -- Const List [Const Intval 1] or Const (IntVal 2)
--- eval (Var v) = Comp (\e -> case lookup v e of {Just a -> (Right a, []); Nothing -> (Left (EBadVar v), [])})
--- eval (Oper o x y) = do
+eval (Const v) = return v
+eval (Var v) = look v
+eval (Oper o x y) = do 
+  x' <- eval x
+  y' <- eval y
+  case operate o x' y' of
+    Left e -> abort (EBadArg e)
+    Right v -> return v
+eval (Not x) = do
+  x' <- eval x
+  if truthy x' then return TrueVal else return FalseVal
+-- eval Call f x 
+-- eval (List []) = return (ListVal [])
+-- eval (List [x]) = eval x
+-- eval (List (x:xs)) = do
 --   x' <- eval x
---   y' <- eval y
---   v <- operate o x' y'
---   return $ case v of
---     Left e -> Comp (\e -> (Left e, []))
---     Right v -> Comp (\e -> (Right v, []))
-  
-
--- eval Not Exp = undefined
+--   xs' <- eval (List xs)
 -- eval Call f [Exp] 
 -- eval Call f [] = undefined
 -- eval Call f [x]
@@ -130,6 +158,7 @@ eval _ = undefined
 --   | f == "print" = 
 -- eval List [Exp] = undefined
 -- eval Compr Exp [CClause] = undefined
+eval _ = undefined 
 
 -- Likewise, exec p is the computation arising from executing the program (or program fragment) p, with 
 -- no nominal return value, but with any side effects in p still taking place in the computation.
