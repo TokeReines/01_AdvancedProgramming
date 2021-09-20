@@ -19,16 +19,14 @@ newtype Comp a = Comp {runComp :: Env -> (Either RunError a, [String])}
 
 instance Monad Comp where
   return a = Comp (\_e -> (Right a, []))
-  m >>= f = Comp (\e -> do (_, out) <- runComp m e
-                           (_, out') <- runComp (f a) e
-                           Right (_, out <> out'))
-  -- m >>= f = RWSE (\r s0 ->  do (a, w1, s1) <- runRWSE m r s0
-  --                              (b, w2, s2) <- runRWSE (f a) r s1
-  --                              Right (b, w1 <> w2, s2))
-
   -- m >>= f = Comp (\e -> case runComp m e of
-  --                         (Left err, out) -> (Left err, out)
-  --                         (Right a, _) -> runComp (f a) e)
+  --                       (Left err, out) -> (Left err, out)
+  --                       (Right a, _) -> runComp (f a) e)
+  m >>= f = Comp (\e -> case runComp m e of
+                          (Left err, out) -> (Left err, out)
+                          (Right a, out) -> case runComp (f a) e of
+                                              (Left err, out2) -> (Left err, out <> out2)
+                                              (Right b, out2) -> (Right b, out <> out2))
 
 -- You shouldn't need to modify these
 instance Functor Comp where
