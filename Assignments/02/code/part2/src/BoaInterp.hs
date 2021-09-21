@@ -2,13 +2,14 @@
 
 module BoaInterp
   (Env, RunError(..), Comp(..),
-   abort, look, withBinding, output, stringifyValues,
+   abort, look, withBinding, output,
    truthy, operate, apply,
    eval, exec, execute)
   where
 
 import BoaAST
 import Control.Monad
+import Data.List
 
 type Env = [(VName, Value)]
 
@@ -67,41 +68,40 @@ operate Minus (IntVal x) (IntVal y) = (Right . IntVal) (x - y)
 operate Minus _ _ = Left "Only integers allowed for Minus Op"
 operate Times (IntVal x) (IntVal y) = (Right . IntVal) (x * y)
 operate Times _ _ = Left "Only integers allowed for Times Op"
--- Right(IntVal(FuncA(FuncB(x + y))))
--- operate Plus (StringVal x StringVal y) = Left x ++ y
-operate _ _ _ = undefined
--- operate Div (IntVal x) (IntVal y) = (Right . IntVal) (x `div` y)
--- operate Mod (IntVal x) (IntVal y) = (Right . IntVal) (x `mod` y)
--- operate Eq (IntVal x) (IntVal y)
---   | x == y = Right TrueVal
---   | otherwise = Right FalseVal
--- operate Less (IntVal x) (IntVal y)   
---   | x < y = Right TrueVal
---   | otherwise = Right FalseVal
--- operate Greater (IntVal x) (IntVal y)    
---   | x > y = Right TrueVal
---   | otherwise = Right FalseVal
--- -- Many more cases here. Haskell doesn't allow elem 1 ["hej"], but python does
--- operate In (TrueVal) (ListVal l) 
---   | elem TrueVal l = Right TrueVal
---   | otherwise = Right FalseVal
+operate Div (IntVal x) (IntVal y) 
+  | y == 0 = Left "Division by 0 not allowed"
+  | otherwise = (Right . IntVal) (x `div` y)
+operate Div _ _ = Left "Only integers allowed for Div Op"
+operate Mod (IntVal x) (IntVal y)
+  | y == 0 = Left "Modulo by 0 not allowed"
+  | otherwise = (Right . IntVal) (x `mod` y)
+operate Mod _ _ = Left "Only integers allowed for Mod Op"
+operate Eq x y = if x == y then Right TrueVal else Right FalseVal
+operate Less (IntVal x) (IntVal y) = if x < y then Right TrueVal  else Right FalseVal
+operate Less _ _ = Left "Only integers allowed for Less Op"
+operate Greater (IntVal x) (IntVal y) = if x > y then Right TrueVal  else Right FalseVal
+operate Greater _ _ = Left "Only integers allowed for Greater Op"
+operate In x y
+  | (ListVal ys) <- y = if x `elem` ys then Right TrueVal else Right FalseVal
+  | otherwise = Left "Second argument to In has to be a list"
 
 
-stringifyValues :: [Value] -> String
-stringifyValues [] = ""
-stringifyValues [v]
+stringifyValue :: Value -> String
+stringifyValue v
   | NoneVal <- v = "None"
   | TrueVal <- v = "True"
   | FalseVal <- v = "False"
   | (IntVal i) <- v = show i
   | (StringVal s) <- v = s
   | (ListVal []) <- v = "[]"
-  | (ListVal [x]) <- v = "[" ++ stringifyValues [x]  ++ "]"
-  | (ListVal (x:xs)) <- v = "[" ++ stringifyValues [x]  ++ ", " ++ stringifyValues xs ++ "]"
+  | l@(ListVal vs) <- v = stringifyValues [l]
+
+stringifyValues :: [Value] -> String
+stringifyValues [] = ""
+stringifyValues [v]
+  | (ListVal x) <- v = "[" ++ intercalate ", " (map stringifyValue x) ++ "]"
+  | otherwise = stringifyValue v
 stringifyValues (v:vs) =  stringifyValues [v] ++ " " ++ stringifyValues vs
-
-
--- [IntVal 42, StringVal "foo", ListVal [TrueVal, ListVal []], IntVal (-1)]
 
 apply :: FName -> [Value] -> Comp Value
 apply f v
@@ -150,24 +150,122 @@ eval (List x) = do
 eval (Call f xs) = do
   xs' <- mapM eval xs
   apply f xs'
--- (Compr (Var "x")[CCFor "x" (Call "range" [Const (IntVal 10)])])
--- [e(x*x) cc([for x in range(10)]) if x < 5]
+-- eval (Compr e ccs) = do
+--   someFunc ccs
+--   where
+--   someFunc (cc':ccs')
+--     | CCFor v e' <- cc' = do
+--       val <- eval e'
+--       case val of
+--         ListVal xs -> do
+--           a <- mapM (\x -> withBinding v x (someFunc ccs')) xs
+--           az <- zip xs a-- zip a xs where a' == TrueValue
+--           az' <- filter (\x t -> t) az
+--           a' <- map (\t1 t2 -> t1) az'
+--           return a'
+--     | CCIf e' <- cc' = eval e'               
+--     | otherwise = eval e
+eval (Compr e []) = do eval e
 eval (Compr e [cc])
-  -- | cc -> [eval ccs -> withBinding var value -> eval ccss -> withBinding var' value']
   | CCFor v e' <- cc = do
     val <- eval e'
     case val of
       ListVal xs -> do
         a <- mapM (\x -> withBinding v x (eval e)) xs
         return (ListVal a)
+        -- withBinding v (ListVal xs) (eval e)
       _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
-  -- | CCIf e <- cc = do
-  --   e' <- eval e
-  --   if truthy e' then do 
-  --     return TrueVal
-  --   else do 
-  --     return FalseVal  
+  | CCIf e' <- cc = do
+    e'' <- eval e'
+    if truthy e'' then do eval e
+    else do return (ListVal [])
+eval (Compr e (cc:ccs))
+  | CCFor v e' <- cc = do
+    val <- eval e'
+    case val of
+      ListVal xs -> do
+        a <- mapM (\x -> withBinding v x (eval e)) xs
+        eval (Compr (Const (ListVal a)) ccs)
+        -- withBinding v (ListVal xs) (eval e)
+      _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
+  | CCIf e' <- cc = do
+    e'' <- eval e'
+    a <-
+    if truthy e'' then do eval e
+    else do return (ListVal [])
+-- eval (Compr e ccs) = do
+--   return someFunc b ccs
+--   where
+--   someFunc b (cc':ccs')
+--     | CCFor v e' <- cc' = do
+--       val <- eval e'
+--       case val of
+--         ListVal xs -> do
+--           a <- mapM (\x -> withBinding v x (somefunc b ccs')) xs
+--           -- az <- zip xs a-- zip a xs where a' == TrueValue
+--           -- az' <- filter (\x t -> t) az
+--           -- a' <- map (\t1 t2 -> t1) az'
+--           return a
+--     | CCIf e' <- cc' = do return eval e'               
+--     | otherwise = do eval b    
+  -- [ a | b <- [1..10], a <- [b..10], CCIf] = [1,2,3,4,5,6,7,8,9,10,2,3,4,5,6,7,8,9,10,3,4,5,6,7,8,9,10,4,5,6,7,8,9...
 
+ -- (\f -> [x | x <- [0..10], f(x)])
+-- [1 | 1 == 1]
+-- runCom (eval (Compr (Const (IntVal 1))
+--                  [CCIf (Oper Eq (Const (IntVal 1)) 
+--                                 (Const (IntVal 1))
+--                                    )]
+-- )) []
+
+-- eval (Compr e cc)
+--  | CCFor v e' = do
+--    val <- eval'
+--    case val of
+--      ListVal xs -> do 
+
+-- eval (Compr e c) = do
+  
+ -- (\f -> [x | x <- [0..10], f(x)])
+-- eval (Compr e ccs) = do
+--   someFunc ccs
+--   where
+--   someFunc (cc':ccs')
+--     | CCFor v e' <- cc' = do
+--       val <- eval e'
+--       case val of
+--         ListVal xs -> do
+--           a <- mapM (\x -> withBinding v x (somefunc ccs')) xs
+--           return 
+--     | CCIf e' <- cc' = do 
+--       e'' <- eval e'
+--       x <- look e
+--       a <- mapM (\x -> withBinding)                 
+--     | otherwise = eval e
+    
+
+-- eval (Compr e ccs) = do
+--   someFunc b ccs
+--   where
+--   someFunc b (cc':ccs')
+--     | CCFor v e' <- cc' = do
+--       val <- eval e'
+--       case val of
+--         ListVal xs -> do
+--           a <- mapM (\x -> withBinding v x (somefunc b ccs')) xs
+--           -- az <- zip xs a-- zip a xs where a' == TrueValue
+--           -- az' <- filter (\x t -> t) az
+--           -- a' <- map (\t1 t2 -> t1) az'
+--           return a
+--     | CCIf e' <- cc' = eval e'               
+--     | otherwise = eval b
+
+-- lowestDivisor :: Integer -> Integer
+-- lowestDivisor n = lowestDivisorHelper 2 n 
+--     where 
+--   lowestDivisorHelper m n
+--         | (m divides n) = m  -- these should belong to lowestDivisorHelper
+--         | otherwise = lowestDivisorHelper (m+1) n
 -- eval (Compr e ccs)
 --   | CCFor v e' <- cc = do
 --     val <- eval e'
@@ -184,7 +282,8 @@ eval (Compr e [cc])
 --       return FalseVal
 eval _ = undefined
 
--- (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]), Var "i"])
+
+-- (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2)])])
 --       (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 10)])])
 -- eval (CCFor v e) = do 
 --   vs <- eval e 
