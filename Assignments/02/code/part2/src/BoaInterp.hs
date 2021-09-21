@@ -39,14 +39,14 @@ abort :: RunError -> Comp a
 abort err = Comp (\_e -> (Left err, []))
 
 look :: VName -> Comp Value
-look v = Comp (\e -> case lookup v e of 
+look v = Comp (\e -> case lookup v e of
                       Just x -> (Right x, [])
                       Nothing -> (Left $ EBadVar v, [])
                       )
 -- Runs  the  computation m with x bound  to v,  
 -- in  addition  to  any  othercurrent bindings
 withBinding :: VName -> Value -> Comp a -> Comp a
-withBinding x v m = Comp(\e -> runComp m ([(x, v)] ++ e)) -- Might give duplicate variables in env
+withBinding x v m = Comp(\e -> runComp m ((x, v) : e)) -- Might give duplicate variables in env
 
 output :: String -> Comp ()
 output s = Comp (\_e -> (Right (), [s]))
@@ -109,24 +109,24 @@ apply f v
       let s = stringifyValues v
       output s
       return NoneVal
-  | f == "range" = case v of 
-    [IntVal x] -> 
+  | f == "range" = case v of
+    [IntVal x] ->
       -- Probably more effective that doing a recursive call
       do return (ListVal [IntVal x' | x' <- [0..x-1]])
-    [IntVal x, IntVal y] -> 
+    [IntVal x, IntVal y] ->
       -- Probably more effective that doing a recursive call
       do return (ListVal [IntVal x' | x' <- [x..y-1]])
     [IntVal x, IntVal y, IntVal z] ->
       if z == 0 then do abort (EBadArg "Stepsize may not be 0")
       -- Desc list with positive stepsize || Asc list with negative stepsize
       else if (x >= y && z > 0) || (x <= y && z < 0) then do return (ListVal [])
-      else if z < 0 then do 
+      else if z < 0 then do
         -- Range for desc list
         return (ListVal [IntVal x' | x' <- reverse [y..x-1], (x'-y) `mod` z == 0])
       else do
         -- Range for asc list
         return (ListVal [IntVal x' | x' <- [x..y-1], (x'-x) `mod` z == 0])  --asc
-    _ -> abort (EBadArg "Only integer values allowed as augments for function \"range\"") 
+    _ -> abort (EBadArg "Only integer values allowed as augments for function \"range\"")
   | otherwise = abort (EBadFun f)
 
 -- Main functions of interpreter
@@ -134,7 +134,7 @@ apply f v
 eval :: Exp -> Comp Value
 eval (Const v) = return v
 eval (Var v) = look v
-eval (Oper o x y) = do 
+eval (Oper o x y) = do
   x' <- eval x
   y' <- eval y
   case operate o x' y' of
@@ -156,8 +156,8 @@ eval (Compr e [cc])
   -- | cc -> [eval ccs -> withBinding var value -> eval ccss -> withBinding var' value']
   | CCFor v e' <- cc = do
     val <- eval e'
-    case val of 
-      ListVal xs -> do 
+    case val of
+      ListVal xs -> do
         a <- mapM (\x -> withBinding v x (eval e)) xs
         return (ListVal a)
       _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
@@ -167,7 +167,7 @@ eval (Compr e [cc])
   --     return TrueVal
   --   else do 
   --     return FalseVal  
-          
+
 -- eval (Compr e ccs)
 --   | CCFor v e' <- cc = do
 --     val <- eval e'
@@ -182,7 +182,7 @@ eval (Compr e [cc])
 --       return TrueVal
 --     else do 
 --       return FalseVal
-eval _ = undefined 
+eval _ = undefined
 
 -- (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]), Var "i"])
 --       (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 10)])])
@@ -209,13 +209,13 @@ exec [] = return ()
 --     do eval e
 --        exec []
 exec (h:ss)
-  | (SDef v e) <- h = 
+  | (SDef v e) <- h =
       do c <- eval e
-         withBinding v c (exec ss)           
-  | (SExp e) <- h = do 
+         withBinding v c (exec ss)
+  | (SExp e) <- h = do
       _v <- eval e
       exec ss
-         
+
 execute :: Program -> ([String], Maybe RunError)
 execute p = case runComp (exec p) [] of
   (Left err, out) -> (out, Just err)
