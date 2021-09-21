@@ -107,17 +107,26 @@ apply f v
       let s = stringifyValues v
       output s
       return NoneVal
-  | f == "range" = undefined
+  | f == "range" = case v of 
+    [IntVal x] -> 
+      -- Probably more effective that doing a recursive call
+      do return (ListVal [IntVal x' | x' <- [0..x-1]])
+    [IntVal x, IntVal y] -> 
+      -- Probably more effective that doing a recursive call
+      do return (ListVal [IntVal x' | x' <- [x..y-1]])
+    [IntVal x, IntVal y, IntVal z] ->
+      if z == 0 then do abort (EBadArg "Stepsize may not be 0")
+      -- Desc list with positive stepsize || Asc list with negative stepsize
+      else if (x >= y && z > 0) || (x <= y && z < 0) then do return (ListVal [])
+      else if z < 0 then do 
+        -- Range for desc list
+        return (ListVal [IntVal x' | x' <- reverse [y..x-1], (x'-y) `mod` z == 0])
+      else do
+        -- Range for asc list
+        return (ListVal [IntVal x' | x' <- [x..y-1], (x'-x) `mod` z == 0])  --asc
+    _ -> abort (EBadArg "Only integer values allowed as augments for function \"range\"") 
   | otherwise = abort (EBadFun f)
--- | f == "range" = case v of 
---   [IntVal x] -> let v = map (\x -> IntVal x) [0..1] 
---                 in Comp (\e -> (Right (ListVal v), []))
---   [IntVal x, IntVal y] -> let v = map (\x -> IntVal x) [x..y] 
---                           in Comp (\e -> (Right (ListVal v), []))
---   [IntVal x, IntVal y, IntVal z] -> let v = map (\x -> IntVal x) [z - 1, x..y]
---                                     in Comp (\e -> (Right (ListVal v), [])) -- [0, 1..3] -> [1,2,3]. z is 0-indexed]
--- | otherwise = undefined
-  
+
 -- Main functions of interpreter
 -- eval e is the computation that evaluates the expression e in the current environment and returns its value
 eval :: Exp -> Comp Value
@@ -139,43 +148,64 @@ eval (List x) = do
 eval (Call f xs) = do
   xs' <- mapM eval xs
   apply f xs'
--- eval Call f [x] = do
---   x' <- eval x
+eval (Compr e []) = undefined
+eval (Compr e (cc:ccs))
+  | CCFor v e <- cc = do
+    e' <- eval e
+    withBinding v e' (eval Comp)
 
--- eval Call f [x:xs] 
---   | f == "print" = 
--- eval List [Exp] = undefined
--- eval Compr Exp [CClause] = undefined
+  | CCIf e <- cc = undefined
+  
 eval _ = undefined 
 
+-- (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]), Var "i"])
+
+-- eval (CCFor v e) = do 
+--   vs <- eval e 
+--   return (mapM (\i -> withBinding v i (eval ss) vs))
+  -- case vs of
+  --   List [x:xs] -> do return undefined
+  --   _ -> do return undefined
+-- eval (CCIf e) = undefined
+
+
+
+-- execute (Call "range" [Const (IntVal 2),Var "n"])
 -- Likewise, exec p is the computation arising from executing the program (or program fragment) p, with 
 -- no nominal return value, but with any side effects in p still taking place in the computation.
 exec :: Program -> Comp () -- Program = [Stmt]
 exec [] = return ()
-exec [st]
-  | (SDef v e) <- st = 
-    do eval e
-       exec []      
-  | (SExp e) <- st = 
-    do eval e
-       exec []
+-- exec [st]
+--   | (SDef v e) <- st = 
+--     do eval e
+--        exec []      
+--   | (SExp e) <- st = 
+--     do eval e
+--        exec []
 exec (h:ss)
   | (SDef v e) <- h = 
       do c <- eval e
          withBinding v c (exec ss)           
   | (SExp e) <- h = do 
-      v <- eval e
+      _v <- eval e
       exec ss
          
-
--- [Stmt: SDef "x" = 2+2, Stmt: SExp Add "x" 2]
-
--- withBinding :: VName -> Value -> Comp a -> Comp a
--- Finally, execute p explicitly returns the list of output lines, and the error message
--- (if relevant) resulting from executing p in the initial environment, which contains
--- no variable bindings. (For implementing execute (only), you are allowed to use the 
--- runComp projection of the monad type.)
 execute :: Program -> ([String], Maybe RunError)
 execute p = case runComp (exec p) [] of
   (Left err, out) -> (out, Just err)
-  (Right a, out) ->  (out, Nothing)
+  (Right _, out) ->  (out, Nothing)
+
+-- >>> list(range(10,-10,1))
+-- []
+-- >>> list(range(-10, 10, 1))
+-- [-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+-- >>> list(range(-10, 10, -1))
+-- []
+-- if z < 0 
+--   then let a = 
+--   else let a = [min..max]
+--   in [IntVal x | x <- a, x `mod` z == 0]
+--foldl (flip (:)) [] [min..max] 
+
+-- (x >= y && z > 0) || (x <= y && z < 0) = ListVal []
+-- z == 0 = EBadArg "Stepsize may not be 0"[min x y..max x y - 1]
