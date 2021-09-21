@@ -1,7 +1,5 @@
 *.code-workspace
 .DS_Store
 .stack-work
-.stack.yaml.lock
-.boa.cabal
 stack.yaml.lock
 boa.cabal
