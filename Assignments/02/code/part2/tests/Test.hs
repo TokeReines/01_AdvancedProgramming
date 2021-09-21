@@ -13,7 +13,7 @@ main :: IO ()
 main = defaultMain $ localOption (mkTimeout 1000000) tests
 
 tests :: TestTree
-tests = testGroup "Tests" [lookTest, abortTest, withBindingTest, outputTest, truthyTest, operateTest, evalTest, applyTest, stubbyTest]
+tests = testGroup "Tests" [lookTest, abortTest, withBindingTest, outputTest, truthyTest, operateTest, applyTest, evalTest, stubbyTest]
 
 lookTest = testGroup "look Tests" 
   [ testCase "*look \"x\"" $ runComp (look "x") [] @?= (Left (EBadVar "x"),[])
@@ -207,10 +207,11 @@ applyTest = testGroup "apply tests"
 
 evalTest = testGroup "eval tests" 
   [ testCase "eval (Const (IntVal 1))" $ runComp (eval (Const (IntVal 1))) [] @?= (Right (IntVal 1),[])
-  , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) @?= (Left (EBadVar "x"),[])
-  , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) @?= (Left (EBadVar "x"),[])
+  , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) [] @?= (Left (EBadVar "x"),[])
+  , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) [] @?= (Left (EBadVar "x"),[])
   , testCase "eval (Compr (Oper Times (Var \"x\") (Var \"x\"))[CCFor \"x\" (Call \"range\" [Const (IntVal 4)])])" $ runComp (eval (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 4)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 4,IntVal 9]),[])
-  , testCase "" $ runCom (eval (Compr (Const (IntVal 1))[CCIf (Oper Eq (Const (IntVal 1)) (Const (IntVal 1)))])) [] @?= (Right (IntVal 1),[])
+  , testCase "compr" $ runComp (eval (Compr (Const (IntVal 1))[CCIf (Oper Eq (Const (IntVal 1)) (Const (IntVal 1)))])) [] @?= (Right (IntVal 1),[])
+  , testCase "compr2" $ runComp (eval (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),CCFor "j" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"])])) [("n", IntVal 5)] @?= (Right (IntVal 1),[])
   ] 
 
 stubbyTest = testGroup "Stubby tests" 
