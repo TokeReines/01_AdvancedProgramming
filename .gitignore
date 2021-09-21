@@ -1,4 +1,4 @@
 *.code-workspace
 .stack-work
-.stack.yaml.lock
-.boa.cabal
+stack.yaml.lock
+boa.cabal
