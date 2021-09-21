@@ -6,14 +6,14 @@ import BoaInterp
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import BoaAST (Value(NoneVal))
+import BoaAST (Value(NoneVal, FalseVal))
 import Data.Bool (Bool(True))
 
 main :: IO ()
 main = defaultMain $ localOption (mkTimeout 1000000) tests
 
 tests :: TestTree
-tests = testGroup "Tests" [lookTest, abortTest, truthyTest, operateTest, evalTest, stringifyValuesTest, applyTest, stubbyTest]
+tests = testGroup "Tests" [lookTest, abortTest, withBindingTest, outputTest, truthyTest, operateTest, evalTest, applyTest, stubbyTest]
 
 lookTest = testGroup "look Tests" 
   [ testCase "*look \"x\"" $ runComp (look "x") [] @?= (Left (EBadVar "x"),[])
@@ -34,10 +34,18 @@ abortTest = testGroup "abort tests"
   , testCase "abort (EBadArg \"x\")" $ (runComp (abort (EBadArg "x")) [] :: (Either RunError Int, [String])) @?= (Left (EBadArg "x"),[])
   ]
 
-withBindingTest = testGroup "withBinding tests" []
+withBindingTest = testGroup "withBinding tests" 
+  [ testCase "withBinding \"x\" (IntVal 3) (eval (Var \"x\"))" $ runComp (withBinding "x" (IntVal 3) (eval (Var "x"))) [] @?= (Right (IntVal 3),[])
+  , testCase "*withBinding \"x\" (IntVal 3) (eval (Var \"y\"))" $ runComp (withBinding "x" (IntVal 3) (eval (Var "y"))) [] @?= (Left (EBadVar "y"),[])
+  , testCase "do withBinding \"x\" (IntVal 3) (eval (Var \"x\")); withBinding \"x\" (IntVal 4) (eval (Var \"x\"))" $ runComp (do withBinding "x" (IntVal 3) (eval (Var "x")); withBinding "x" (IntVal 4) (eval (Var "x"))) [] @?= (Right (IntVal 4),[])
+  , testCase "*do withBinding \"y\" (IntVal 3) (eval (Var \"x\")); withBinding \"x\" (IntVal 4) (eval (Var \"x\"))" $ runComp (do withBinding "y" (IntVal 3) (eval (Var "x")); withBinding "x" (IntVal 4) (eval (Var "x"))) [] @?= (Left (EBadVar "x"),[])
+  , testCase "do withBinding \"x\" (IntVal 3) (eval (Var \"x\")); withBinding \"y\" (IntVal 4) (eval (Var \"y\"))" $ runComp (do withBinding "x" (IntVal 3) (eval (Var "x")); withBinding "y" (IntVal 4) (eval (Var "y"))) [] @?= (Right (IntVal 4),[])
+  ]
 
-outputTest = testGroup "output tests" []
-
+outputTest = testGroup "output tests" 
+  [ testCase "output \"Hello\"" $ runComp (output "Hello") [] @?= (Right (),["Hello"])
+  , testCase "do output \"Hello\"; output \"World\"" $ runComp (do output "Hello"; output "World") [] @?= (Right (),["Hello", "World"])
+  ]
 
 truthyTest = testGroup "truthy tests" 
  [ testCase "truthy NoneVal" $ truthy NoneVal @?= False
@@ -49,22 +57,130 @@ truthyTest = testGroup "truthy tests"
  , testCase "truthy (StringVal \"\")" $ truthy (StringVal "") @?= False
  , testCase "truthy (StringVal \"Hello World!\")" $ truthy (StringVal "Hello World!") @?= True
  , testCase "truthy (ListVal [])" $ truthy (ListVal []) @?= False
- , testCase "truthy (ListVal [TrueVal, FalseVal])" $ truthy (ListVal [TrueVal, FalseVal]) @?= True
+ , testCase "truthy (ListVal [FalseVal, FalseVal])" $ truthy (ListVal [FalseVal, FalseVal]) @?= True
 
  ]
 
 operateTest = testGroup "operate tests" 
-  [ testCase "operate Plus (IntVal 2) (IntVal 2)" $ operate Plus (IntVal 2) (IntVal 2) @?= Right (IntVal 4)
+  [ -- Plus
+    testCase "operate Plus (IntVal 2) (IntVal 2)" $ operate Plus (IntVal 2) (IntVal 2) @?= Right (IntVal 4)
+  , testCase "operate Plus (IntVal 2147483648) (IntVal 2147483648)" $ operate Plus (IntVal 2147483648) (IntVal 2147483648) @?= Right (IntVal 4294967296)
   , testCase "operate Plus (IntVal 2) (IntVal (-2))" $ operate Plus (IntVal 2) (IntVal (-2)) @?= Right (IntVal 0)
   , testCase "operate Plus (IntVal (-2)) (IntVal (-2))" $ operate Plus (IntVal (-2)) (IntVal (-2)) @?= Right (IntVal (-4))
   , testCase "operate Plus (IntVal (-2)) (IntVal 2)" $ operate Plus (IntVal (-2)) (IntVal 2) @?= Right (IntVal 0)
   , testCase "*operate Plus TrueVal (IntVal 2)" $ operate Plus TrueVal (IntVal 2) @?= Left "Only integers allowed for Plus Op"
   , testCase "*operate Plus FalseVal (IntVal 2)" $ operate Plus FalseVal (IntVal 2) @?= Left "Only integers allowed for Plus Op"
   , testCase "*operate Plus (StringVal \"Hello\") (IntVal 2)" $ operate Plus (StringVal "Hello") (IntVal 2) @?= Left "Only integers allowed for Plus Op"
+  , testCase "*operate Plus (ListVal []) (IntVal 2)" $ operate Plus (ListVal []) (IntVal 2) @?= Left "Only integers allowed for Plus Op"
+    -- Minus
+  , testCase "operate Minus (IntVal 2) (IntVal 2)" $ operate Minus (IntVal 2) (IntVal 2) @?= Right (IntVal 0)
+  , testCase "operate Minus (IntVal -1) (IntVal 2147483648)" $ operate Minus (IntVal (-1)) (IntVal 2147483648) @?= Right (IntVal (-2147483649))
+  , testCase "operate Minus (IntVal 2) (IntVal (-2))" $ operate Minus (IntVal 2) (IntVal (-2)) @?= Right (IntVal 4)
+  , testCase "operate Minus (IntVal (-2)) (IntVal (-2))" $ operate Minus (IntVal (-2)) (IntVal (-2)) @?= Right (IntVal 0)
+  , testCase "operate Minus (IntVal (-2)) (IntVal 2)" $ operate Minus (IntVal (-2)) (IntVal 2) @?= Right (IntVal (-4))
+  , testCase "*operate Minus TrueVal (IntVal 2)" $ operate Minus TrueVal (IntVal 2) @?= Left "Only integers allowed for Minus Op"
+  , testCase "*operate Minus FalseVal (IntVal 2)" $ operate Minus FalseVal (IntVal 2) @?= Left "Only integers allowed for Minus Op"
+  , testCase "*operate Minus (StringVal \"Hello\") (IntVal 2)" $ operate Minus (StringVal "Hello") (IntVal 2) @?= Left "Only integers allowed for Minus Op"
+  , testCase "*operate Minus (ListVal []) (IntVal 2)" $ operate Minus (ListVal []) (IntVal 2) @?= Left "Only integers allowed for Minus Op"
+    -- Times
+  , testCase "operate Times (IntVal 2) (IntVal 2)" $ operate Times (IntVal 2) (IntVal 2) @?= Right (IntVal 4)
+  , testCase "operate Times (IntVal 1234567890) (IntVal 5)" $ operate Times (IntVal 1234567890) (IntVal 5) @?= Right (IntVal 6172839450)
+  , testCase "operate Times (IntVal 2) (IntVal (-2))" $ operate Times (IntVal 2) (IntVal (-2)) @?= Right (IntVal (-4))
+  , testCase "operate Times (IntVal (-2)) (IntVal (-2))" $ operate Times (IntVal (-2)) (IntVal (-2)) @?= Right (IntVal 4)
+  , testCase "operate Times (IntVal (-2)) (IntVal 2)" $ operate Times (IntVal (-2)) (IntVal 2) @?= Right (IntVal (-4))
+  , testCase "operate Times (IntVal (-2)) (IntVal 0)" $ operate Times (IntVal (-2)) (IntVal 0) @?= Right (IntVal 0)
+  , testCase "operate Times (IntVal 0) (IntVal 2)" $ operate Times (IntVal 0) (IntVal 2) @?= Right (IntVal (0))
+  , testCase "*operate Times TrueVal (IntVal 2)" $ operate Times TrueVal (IntVal 2) @?= Left "Only integers allowed for Times Op"
+  , testCase "*operate Times FalseVal (IntVal 2)" $ operate Times FalseVal (IntVal 2) @?= Left "Only integers allowed for Times Op"
+  , testCase "*operate Times (StringVal \"Hello\") (IntVal 2)" $ operate Times (StringVal "Hello") (IntVal 2) @?= Left "Only integers allowed for Times Op"
+  , testCase "*operate Times (ListVal []) (IntVal 2)" $ operate Times (ListVal []) (IntVal 2) @?= Left "Only integers allowed for Times Op"
+    -- Div
+  , testCase "operate Div (IntVal 2) (IntVal 2)" $ operate Div (IntVal 9) (IntVal 2) @?= Right (IntVal 4)
+  , testCase "operate Div (IntVal 2) (IntVal 2)" $ operate Div (IntVal 0) (IntVal 2) @?= Right (IntVal 0)
+  , testCase "operate Div (IntVal 2) (IntVal 0)" $ operate Div (IntVal 9) (IntVal 0) @?= Left "Division by 0 not allowed"
+  , testCase "operate Div (IntVal 2147483648) (IntVal 2147483648)" $ operate Div (IntVal 2147483648) (IntVal 2147483000) @?= Right (IntVal 1)
+  , testCase "operate Div (IntVal 7) (IntVal (-2))" $ operate Div (IntVal 7) (IntVal (-2)) @?= Right (IntVal (-4))
+  , testCase "operate Div (IntVal (-2)) (IntVal (-2))" $ operate Div (IntVal (-2)) (IntVal (-2)) @?= Right (IntVal 1)
+  , testCase "operate Div (IntVal (-2)) (IntVal 2)" $ operate Div (IntVal (-2)) (IntVal 2) @?= Right (IntVal (-1))
+  , testCase "*operate Div TrueVal (IntVal 2)" $ operate Div TrueVal (IntVal 2) @?= Left "Only integers allowed for Div Op"
+  , testCase "*operate Div FalseVal (IntVal 2)" $ operate Div FalseVal (IntVal 2) @?= Left "Only integers allowed for Div Op"
+  , testCase "*operate Div (StringVal \"Hello\") (IntVal 2)" $ operate Div (StringVal "Hello") (IntVal 2) @?= Left "Only integers allowed for Div Op"
+  , testCase "*operate Div (ListVal []) (IntVal 2)" $ operate Div (ListVal []) (IntVal 2) @?= Left "Only integers allowed for Div Op"
+    -- Mod
+  , testCase "operate Mod (IntVal 2) (IntVal 2)" $ operate Mod (IntVal 9) (IntVal 2) @?= Right (IntVal 1)
+  , testCase "operate Mod (IntVal 2) (IntVal 2)" $ operate Mod (IntVal 0) (IntVal 2) @?= Right (IntVal 0)
+  , testCase "operate Mod (IntVal 2) (IntVal 0)" $ operate Mod (IntVal 9) (IntVal 0) @?= Left "Modulo by 0 not allowed"
+  , testCase "operate Mod (IntVal 2147483648) (IntVal 2147483648)" $ operate Mod (IntVal 2147483648) (IntVal 2147483000) @?= Right (IntVal 648)
+  , testCase "operate Mod (IntVal 7) (IntVal (-2))" $ operate Mod (IntVal 7) (IntVal (-2)) @?= Right (IntVal (-1))
+  , testCase "operate Mod (IntVal (-2)) (IntVal (-2))" $ operate Mod (IntVal (-2)) (IntVal (-2)) @?= Right (IntVal 0)
+  , testCase "operate Mod (IntVal (-2)) (IntVal 2)" $ operate Mod (IntVal (-2)) (IntVal 2) @?= Right (IntVal 0)
+  , testCase "operate Mod (IntVal (-9)) (IntVal (-2))" $ operate Mod (IntVal (-9)) (IntVal (-2)) @?= Right (IntVal (-1))
+  , testCase "operate Mod (IntVal (-9)) (IntVal 2)" $ operate Mod (IntVal (-9)) (IntVal 2) @?= Right (IntVal 1)
+  , testCase "*operate Mod TrueVal (IntVal 2)" $ operate Mod TrueVal (IntVal 2) @?= Left "Only integers allowed for Mod Op"
+  , testCase "*operate Mod FalseVal (IntVal 2)" $ operate Mod FalseVal (IntVal 2) @?= Left "Only integers allowed for Mod Op"
+  , testCase "*operate Mod (StringVal \"Hello\") (IntVal 2)" $ operate Mod (StringVal "Hello") (IntVal 2) @?= Left "Only integers allowed for Mod Op"
+  , testCase "*operate Mod (ListVal []) (IntVal 2)" $ operate Mod (ListVal []) (IntVal 2) @?= Left "Only integers allowed for Mod Op"
+    -- Eq
+  , testCase "operate Eq (IntVal 1) (IntVal 1)" $ operate Eq (IntVal 1) (IntVal 1) @?= Right TrueVal
+  , testCase "operate Eq TrueVal TrueVal" $ operate Eq TrueVal TrueVal @?= Right TrueVal
+  , testCase "operate Eq FalseVal FalseVal" $ operate Eq FalseVal FalseVal @?= Right TrueVal
+  , testCase "operate Eq NoneVal NoneVal" $ operate Eq NoneVal NoneVal @?= Right TrueVal
+  , testCase "operate Eq (StringVal \"Hello World\") (StringVal \"Hello World\")" $ operate Eq (StringVal "Hello World") (StringVal "Hello World") @?= Right TrueVal
+  , testCase "operate Eq (ListVal []) (ListVal [])" $ operate Eq (ListVal []) (ListVal []) @?= Right TrueVal
+  , testCase "operate Eq (ListVal [FalseVal, FalseVal]) (ListVal [FalseVal, FalseVal])" $ operate Eq (ListVal [FalseVal, FalseVal]) (ListVal [FalseVal, FalseVal]) @?= Right TrueVal
+  , testCase "operate Eq (ListVal [IntVal 42, StringVal \"foo\", ListVal [TrueVal, ListVal []], IntVal (-1)]) (ListVal [IntVal 42, StringVal \"foo\", ListVal [TrueVal, ListVal []], IntVal (-1)])" $ operate Eq (ListVal [IntVal 42, StringVal "foo", ListVal [TrueVal, ListVal []], IntVal (-1)]) (ListVal [IntVal 42, StringVal "foo", ListVal [TrueVal, ListVal []], IntVal (-1)]) @?= Right TrueVal
+  , testCase "operate Eq (IntVal 4294967296) (IntVal 4294967296)" $ operate Eq (IntVal 4294967296) (IntVal 4294967296) @?= Right TrueVal
+  , testCase "operate Eq (IntVal 1) (IntVal 2)" $ operate Eq (IntVal 1) (IntVal 2) @?= Right FalseVal
+  , testCase "operate Eq (IntVal 2) (IntVal 1)" $ operate Eq (IntVal 1) (IntVal 2) @?= Right FalseVal
+  , testCase "operate Eq TrueVal (IntVal 1)" $ operate Eq TrueVal (IntVal 1) @?= Right FalseVal
+  , testCase "operate Eq FalseVal NoneVal" $ operate Eq FalseVal NoneVal @?= Right FalseVal
+  , testCase "operate Eq (ListVal []) (ListVal [NoneVal])" $ operate Eq (ListVal []) (ListVal [NoneVal]) @?= Right FalseVal
+    -- Less
+  , testCase "operate Less (IntVal 1) (IntVal 5)" $ operate Less (IntVal 1) (IntVal 5) @?= Right TrueVal
+  , testCase "operate Less (IntVal (-2147483649)) (IntVal 2147483648)" $ operate Less (IntVal (-2147483649)) (IntVal 2147483648) @?= Right TrueVal
+  , testCase "operate Less (IntVal (-1)) (IntVal 5)" $ operate Less (IntVal (-1)) (IntVal 5) @?= Right TrueVal
+  , testCase "operate Less (IntVal 5) (IntVal (-1))" $ operate Less (IntVal 5) (IntVal (-1)) @?= Right FalseVal
+  , testCase "*operate Less TrueVal (IntVal 2)" $ operate Less TrueVal (IntVal 2) @?= Left "Only integers allowed for Less Op"
+  , testCase "*operate Less FalseVal (IntVal 2)" $ operate Less FalseVal (IntVal 2) @?= Left "Only integers allowed for Less Op"
+  , testCase "*operate Less (StringVal \"Hello\") (IntVal 2)" $ operate Less (StringVal "Hello") (IntVal 2) @?= Left "Only integers allowed for Less Op"
+  , testCase "*operate Less (ListVal []) (IntVal 2)" $ operate Less (ListVal []) (IntVal 2) @?= Left "Only integers allowed for Less Op"
+    -- Greater
+  , testCase "operate Greater (IntVal 1) (IntVal 5)" $ operate Greater (IntVal 1) (IntVal 5) @?= Right FalseVal
+  , testCase "operate Greater (IntVal (-2147483649)) (IntVal 2147483648)" $ operate Greater (IntVal (-2147483649)) (IntVal 2147483648) @?= Right FalseVal
+  , testCase "operate Greater (IntVal (-1)) (IntVal 5)" $ operate Greater (IntVal (-1)) (IntVal 5) @?= Right FalseVal
+  , testCase "operate Greater (IntVal 5) (IntVal 1)" $ operate Greater (IntVal 5) (IntVal 1) @?= Right TrueVal
+  , testCase "operate Greater (IntVal 2147483648) (IntVal (-2147483649))" $ operate Greater (IntVal 2147483648) (IntVal (-2147483649)) @?= Right TrueVal
+  , testCase "operate Greater (IntVal 5) (IntVal (-1))" $ operate Greater (IntVal 5) (IntVal (-1)) @?= Right TrueVal
+  , testCase "*operate Greater TrueVal (IntVal 2)" $ operate Greater TrueVal (IntVal 2) @?= Left "Only integers allowed for Greater Op"
+  , testCase "*operate Greater FalseVal (IntVal 2)" $ operate Greater FalseVal (IntVal 2) @?= Left "Only integers allowed for Greater Op"
+  , testCase "*operate Greater (StringVal \"Hello\") (IntVal 2)" $ operate Greater (StringVal "Hello") (IntVal 2) @?= Left "Only integers allowed for Greater Op"
+  , testCase "*operate Greater (ListVal []) (IntVal 2)" $ operate Greater (ListVal []) (IntVal 2) @?= Left "Only integers allowed for Greater Op"
+    -- In
+  , testCase " operate In NoneVal (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In NoneVal (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right TrueVal
+  , testCase " operate In TrueVal (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In TrueVal (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right TrueVal
+  , testCase " operate In FalseVal (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In FalseVal (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right TrueVal
+  , testCase " operate In (IntVal 1) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In (IntVal 1) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right TrueVal
+  , testCase " operate In (StringVal \"foo\") (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In (StringVal "foo") (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right TrueVal
+  , testCase " operate In (ListVal[IntVal 2]) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In (ListVal[IntVal 2]) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right TrueVal
+  , testCase " operate In NoneVal (ListVal [])" $ operate In NoneVal (ListVal []) @?= Right FalseVal
+  , testCase " operate In (StringVal \"bar\") (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In (StringVal "bar") (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right FalseVal
+  , testCase " operate In (IntVal 3) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In (IntVal 3) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right FalseVal
+  , testCase " operate In (IntVal 2) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In (IntVal 2) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right FalseVal
+  , testCase " operate In (ListVal []) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal \"foo\", ListVal[IntVal 2]])" $ operate In (ListVal []) (ListVal [NoneVal, TrueVal, FalseVal, IntVal 1, StringVal "foo", ListVal[IntVal 2]]) @?= Right FalseVal
   ]
 
 applyTest = testGroup "apply tests" 
-  [ testCase "apply \"range\" [IntVal 3]" $ runComp (apply "range" [IntVal 3]) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 2]),[])
+  [ testCase "apply \"print\" [NoneVal]" $ runComp (apply "print" [NoneVal]) [] @?= (Right NoneVal,["None"])
+  , testCase "apply \"print\" [TrueVal]" $ runComp (apply "print" [TrueVal]) [] @?= (Right NoneVal,["True"])
+  , testCase "apply \"print\" [FalseVal]" $ runComp (apply "print" [FalseVal]) [] @?= (Right NoneVal,["False"])
+  , testCase "apply \"print\" [IntVal 3]" $ runComp (apply "print" [IntVal 3]) [] @?= (Right NoneVal,["3"])
+  , testCase "apply \"print\" [StringVal \"foo\"]" $ runComp (apply "print" [StringVal "foo"]) [] @?= (Right NoneVal,["foo"])
+  , testCase "apply \"print\" [ListVal []]" $ runComp (apply "print" [ListVal []]) [] @?= (Right NoneVal,["[]"])
+  , testCase "apply \"print\" [ListVal [TrueVal, TrueVal, FalseVal]]" $ runComp (apply "print" [ListVal [TrueVal, TrueVal, FalseVal]]) [] @?= (Right NoneVal,["[True, True, False]"])
+  , testCase "apply \"print\" [ListVal [TrueVal, TrueVal, ListVal [TrueVal, TrueVal, ListVal [TrueVal, TrueVal]], ListVal [TrueVal, TrueVal]]]" $ runComp (apply "print" [ListVal [TrueVal, TrueVal, ListVal [TrueVal, TrueVal, ListVal [TrueVal, TrueVal]], ListVal [TrueVal, TrueVal]]]) [] @?= (Right NoneVal,["[True, True, [True, True, [True, True]], [True, True]]"])
+  , testCase "apply \"print\" [IntVal 42, StringVal \"foo\", ListVal [TrueVal, ListVal []], IntVal (-1)]" $ runComp (apply "print" [IntVal 42, StringVal "foo", ListVal [TrueVal, ListVal []], IntVal (-1)]) [] @?= (Right NoneVal,["42 foo [True, []] -1"])
+    -- range
+  , testCase "apply \"range\" [IntVal 3]" $ runComp (apply "range" [IntVal 3]) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 2]),[])
   , testCase "apply \"range\" [Intval 0]" $ runComp (apply "range" [IntVal 0]) [] @?= (Right (ListVal []),[])
   , testCase "apply \"range\" [Intval (-2)]" $ runComp (apply "range" [IntVal (-2)]) [] @?= (Right (ListVal []),[])
   , testCase "*apply \"range\" [NoneVal]" $ runComp (apply "range" [NoneVal]) [] @?= (Left (EBadArg "Only integer values allowed as augments for function \"range\""),[])
@@ -85,18 +201,17 @@ applyTest = testGroup "apply tests"
   , testCase "apply \"range\" [IntVal 6, IntVal 0, IntVal (2)]" $ runComp (apply "range" [IntVal 0, IntVal 0, IntVal 2]) [] @?= (Right (ListVal []),[])
   , testCase "apply \"range\" [IntVal 6, IntVal 0, IntVal (2)]" $ runComp (apply "range" [IntVal 0, IntVal 0, IntVal (-2)]) [] @?= (Right (ListVal []),[])
   , testCase "*apply \"range\" [IntVal 6, IntVal 0, IntVal (0)]" $ runComp (apply "range" [IntVal 6, IntVal 0, IntVal 0]) [] @?= (Left (EBadArg "Stepsize may not be 0"),[])
+  -- not built in
+  , testCase "*apply \"foo\" [NoneVal]" $ runComp (apply "foo" [NoneVal]) [] @?= (Left (EBadFun "foo"),[])
   ]
 
 evalTest = testGroup "eval tests" 
-  [ testCase "eval (Compr (Oper Times (Var \"x\") (Var \"x\"))[CCFor \"x\" (Call \"range\" [Const (IntVal 4)])])" $ runComp (eval (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 4)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 4,IntVal 9]),[])
-
+  [ testCase "eval (Const (IntVal 1))" $ runComp (eval (Const (IntVal 1))) [] @?= (Right (IntVal 1),[])
+  , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) @?= (Left (EBadVar "x"),[])
+  , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) @?= (Left (EBadVar "x"),[])
+  , testCase "eval (Compr (Oper Times (Var \"x\") (Var \"x\"))[CCFor \"x\" (Call \"range\" [Const (IntVal 4)])])" $ runComp (eval (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 4)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 4,IntVal 9]),[])
+  , testCase "" $ runCom (eval (Compr (Const (IntVal 1))[CCIf (Oper Eq (Const (IntVal 1)) (Const (IntVal 1)))])) [] @?= (Right (IntVal 1),[])
   ] 
-
-stringifyValuesTest = testGroup "stringifyValues Tests" 
-  [ testCase "stringifyValues [TrueVal, TrueVal, TrueVal]" $ stringifyValues [TrueVal, TrueVal, TrueVal] @?= "True True True"
-  , testCase "stringifyValues [IntVal 42, StringVal \"foo\", ListVal [TrueVal, ListVal []], IntVal (-1)]" $ stringifyValues [IntVal 42, StringVal "foo", ListVal [TrueVal, ListVal []], IntVal (-1)] @?= "42 foo [True, []] -1"
-
-  ]
 
 stubbyTest = testGroup "Stubby tests" 
   [testCase "crash test" $
