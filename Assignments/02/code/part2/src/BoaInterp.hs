@@ -63,11 +63,13 @@ truthy (ListVal x) = (not . null) x
 operate :: Op -> Value -> Value -> Either String Value
 operate Plus (IntVal x) (IntVal y) = (Right . IntVal) (x + y)
 operate Plus _ _ = Left "Only integers allowed for Plus Op"
+operate Minus (IntVal x) (IntVal y) = (Right . IntVal) (x - y)
+operate Minus _ _ = Left "Only integers allowed for Minus Op"
+operate Times (IntVal x) (IntVal y) = (Right . IntVal) (x * y)
+operate Times _ _ = Left "Only integers allowed for Times Op"
 -- Right(IntVal(FuncA(FuncB(x + y))))
 -- operate Plus (StringVal x StringVal y) = Left x ++ y
 operate _ _ _ = undefined
--- operate Minus (IntVal x) (IntVal y) = (Right . IntVal) (x - y)
--- operate Times (IntVal x) (IntVal y) = (Right . IntVal) (x * y)
 -- operate Div (IntVal x) (IntVal y) = (Right . IntVal) (x `div` y)
 -- operate Mod (IntVal x) (IntVal y) = (Right . IntVal) (x `mod` y)
 -- operate Eq (IntVal x) (IntVal y)
@@ -148,18 +150,42 @@ eval (List x) = do
 eval (Call f xs) = do
   xs' <- mapM eval xs
   apply f xs'
-eval (Compr e []) = undefined
-eval (Compr e (cc:ccs))
-  | CCFor v e <- cc = do
-    e' <- eval e
-    withBinding v e' (eval Comp)
-
-  | CCIf e <- cc = undefined
-  
+-- (Compr (Var "x")[CCFor "x" (Call "range" [Const (IntVal 10)])])
+-- [e(x*x) cc([for x in range(10)]) if x < 5]
+eval (Compr e [cc])
+  -- | cc -> [eval ccs -> withBinding var value -> eval ccss -> withBinding var' value']
+  | CCFor v e' <- cc = do
+    val <- eval e'
+    case val of 
+      ListVal xs -> do 
+        a <- mapM (\x -> withBinding v x (eval e)) xs
+        return (ListVal a)
+      _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
+  -- | CCIf e <- cc = do
+  --   e' <- eval e
+  --   if truthy e' then do 
+  --     return TrueVal
+  --   else do 
+  --     return FalseVal  
+          
+-- eval (Compr e ccs)
+--   | CCFor v e' <- cc = do
+--     val <- eval e'
+--     case val of 
+--       ListVal xs -> do 
+--         a <- mapM (\x -> withBinding v x (eval e)) xs
+--         return (ListVal a)
+--       _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
+--   | CCIf e <- cc = do
+--     e' <- eval e
+--     if truthy e' then do 
+--       return TrueVal
+--     else do 
+--       return FalseVal
 eval _ = undefined 
 
 -- (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]), Var "i"])
-
+--       (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 10)])])
 -- eval (CCFor v e) = do 
 --   vs <- eval e 
 --   return (mapM (\i -> withBinding v i (eval ss) vs))
@@ -209,3 +235,5 @@ execute p = case runComp (exec p) [] of
 
 -- (x >= y && z > 0) || (x <= y && z < 0) = ListVal []
 -- z == 0 = EBadArg "Stepsize may not be 0"[min x y..max x y - 1]
+
+-- runComp (Call "range" [Const (IntVal 10)]) [] 

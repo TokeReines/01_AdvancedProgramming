@@ -13,7 +13,7 @@ main :: IO ()
 main = defaultMain $ localOption (mkTimeout 1000000) tests
 
 tests :: TestTree
-tests = testGroup "Tests" [lookTest, abortTest, truthyTest, operateTest, stringifyValuesTest, applyTest, stubbyTest]
+tests = testGroup "Tests" [lookTest, abortTest, truthyTest, operateTest, evalTest, stringifyValuesTest, applyTest, stubbyTest]
 
 lookTest = testGroup "look Tests" 
   [ testCase "*look \"x\"" $ runComp (look "x") [] @?= (Left (EBadVar "x"),[])
@@ -28,7 +28,6 @@ lookTest = testGroup "look Tests"
   , testCase "look \"x\" with [(\"x\", NoneVal), (\"x\", TrueVal)]" $ runComp (look "x") [("x", NoneVal), ("x", TrueVal)] @?= (Right NoneVal,[])
   , testCase "look \"squares\" with [(\"x\", NoneVal), (\"squares\", TrueVal)]" $ runComp (look "squares") [("x", NoneVal), ("squares", TrueVal)] @?= (Right TrueVal,[])
   ]
-
 abortTest = testGroup "abort tests"
   [ testCase "abort (EBadVar \"x\")" $ (runComp (abort (EBadVar "x")) [] :: (Either RunError Int, [String])) @?= (Left (EBadVar "x"),[])
   , testCase "abort (EBadFun \"x\")" $ (runComp (abort (EBadFun "x")) [] :: (Either RunError Int, [String])) @?= (Left (EBadFun "x"),[])
@@ -87,6 +86,11 @@ applyTest = testGroup "apply tests"
   , testCase "apply \"range\" [IntVal 6, IntVal 0, IntVal (2)]" $ runComp (apply "range" [IntVal 0, IntVal 0, IntVal (-2)]) [] @?= (Right (ListVal []),[])
   , testCase "*apply \"range\" [IntVal 6, IntVal 0, IntVal (0)]" $ runComp (apply "range" [IntVal 6, IntVal 0, IntVal 0]) [] @?= (Left (EBadArg "Stepsize may not be 0"),[])
   ]
+
+evalTest = testGroup "eval tests" 
+  [ testCase "eval (Compr (Oper Times (Var \"x\") (Var \"x\"))[CCFor \"x\" (Call \"range\" [Const (IntVal 4)])])" $ runComp (eval (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 4)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 4,IntVal 9]),[])
+
+  ] 
 
 stringifyValuesTest = testGroup "stringifyValues Tests" 
   [ testCase "stringifyValues [TrueVal, TrueVal, TrueVal]" $ stringifyValues [TrueVal, TrueVal, TrueVal] @?= "True True True"
