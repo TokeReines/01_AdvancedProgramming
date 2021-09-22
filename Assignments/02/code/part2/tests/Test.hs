@@ -216,7 +216,10 @@ evalTest = testGroup "eval tests"
   , testCase "eval (Var \"x\")" $ runComp (eval (Var "y")) [("x", IntVal 4), ("x", IntVal 5), ("y", IntVal 6)] @?= (Right (IntVal 6),[])
   , testCase "eval (Var \"x\")" $ runComp (eval (Var "y")) [("y", IntVal 6), ("x", IntVal 4), ("x", IntVal 5)] @?= (Right (IntVal 6),[])
     -- Oper - basic functionality and error handling as operate is tested thoroughly
-    
+  , testCase "1+2" $ runComp (eval (Oper Plus (Const (IntVal 1)) (Const (IntVal 2)))) [] @?= (Right (IntVal 3),[])
+  , testCase "1+x x=unbound" $ runComp (eval (Oper Plus (Const (IntVal 1)) (Var "x"))) [] @?= (Left (EBadVar "x"),[])
+  , testCase "1+x x=5" $ runComp (eval (Oper Plus (Const (IntVal 1)) (Var "x"))) [("x", IntVal 5)] @?= (Right (IntVal 6),[])
+  , testCase "1+x x=5" $ runComp (eval (Oper Plus (Const (IntVal 1)) (Var "x"))) [("x", IntVal 5)] @?= (Right (IntVal 6),[])
     -- Compr
   , testCase "compr [x*x for x in range(4)]" $ runComp (eval (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 4)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 4,IntVal 9]),[])
   , testCase "compr [1 | 1 == 1]" $ runComp (eval (Compr (Const (IntVal 1))[CCIf (Oper Eq (Const (IntVal 1)) (Const (IntVal 1)))])) [] @?= (Right (ListVal [IntVal 1]),[])
