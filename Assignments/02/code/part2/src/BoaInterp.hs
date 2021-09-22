@@ -147,36 +147,42 @@ eval (List x) = do
 eval (Call f xs) = do
   xs' <- mapM eval xs
   apply f xs'
-eval (Compr e []) = do 
-  res <- eval e; 
-  return res
-eval (Compr e [cc])
-  | CCFor v e' <- cc = do
-    val <- eval e'
-    case val of
-      ListVal xs -> do
-        a <- mapM (\x -> withBinding v x (eval (Compr e []))) xs
-        return (ListVal a)
-      _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
-  | CCIf e' <- cc = do
-    e'' <- eval e'
-    if truthy e''
-      then do eval (Compr e [])
-    else do return NoneVal
+eval (Compr e []) = do eval e
 eval (Compr e (cc:ccs))
   | CCFor v e' <- cc = do
     val <- eval e'
     case val of
       ListVal xs -> do
-        a <- mapM (\x ->  withBinding v x (eval (Compr e ccs))) xs
-        return (ListVal a)
+    --     -- a <- mapM (\x ->  withBinding v x (concat (Compr e ccs))) xs
+        -- a <- evalCompr ccs
+        
+        a <- mapM (\x ->  withBinding v x (evalCompr ccs)) xs
+        return (ListVal (concat a))
       _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
   | CCIf e' <- cc = do
     e'' <- eval e'
-    if truthy e''
-      then do eval (Compr e ccs)
-    else do return NoneVal
+    return NoneVal
 
+-- evalCompr :: [CClause] -> [Value]
+-- evalCompr [] = []
+-- evalCompr (cc:ccs)
+--   | CCFor v e <- cc = 
+      
+evalCompr :: [CClause] -> Comp [Value]
+evalCompr [] = return []
+evalCompr (cc:ccs)
+  | CCFor v e <- cc = do
+      e' <- eval e
+      case e' of
+        ListVal xs -> do
+          eval (Compr e ccs)
+          return xs
+        _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
+  | CCIf e <- cc = do
+    e' <- eval e
+    if truthy e' then do evalCompr ccs
+    else do return []
+-- runComp (eval (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),CCFor "j" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"]), CCFor "l" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"])])) [("n", IntVal 4)]
 exec :: Program -> Comp ()
 exec [] = return ()
 exec (h:ss)
