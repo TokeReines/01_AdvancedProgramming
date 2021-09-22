@@ -118,10 +118,10 @@ apply f v
       -- Desc list with positive stepsize || Asc list with negative stepsize
       else if (x >= y && z > 0) || (x <= y && z < 0) then do return (ListVal [])
       else if z < 0 then do
-        -- Range for desc list
+        -- Range for desc list. Here +1 in [y+1..x] makes sure to exclude the last element 
         return (ListVal [IntVal x' | x' <- reverse [y+1..x], (x'-y) `mod` z == 0])
       else do
-        -- Range for asc list
+        -- Range for asc list. Here -1 in [x..y-1] makes sure to exclude the last element
         return (ListVal [IntVal x' | x' <- [x..y-1], (x'-x) `mod` z == 0])  --asc
     _ -> abort (EBadArg "Only integer values allowed as augments for function \"range\"")
   | otherwise = abort (EBadFun f)
