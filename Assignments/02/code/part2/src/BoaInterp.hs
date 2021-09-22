@@ -118,7 +118,7 @@ apply f v
       -- Desc list with positive stepsize || Asc list with negative stepsize
       else if (x >= y && z > 0) || (x <= y && z < 0) then do return (ListVal [])
       else if z < 0 then do
-        -- Range for desc list. Here +1 in [y+1..x] makes sure to exclude the last element 
+        -- Range for desc list
         return (ListVal [IntVal x' | x' <- reverse [y+1..x], (x'-y) `mod` z == 0])
       else do
         -- Range for asc list. Here -1 in [x..y-1] makes sure to exclude the last element
@@ -147,170 +147,38 @@ eval (List x) = do
 eval (Call f xs) = do
   xs' <- mapM eval xs
   apply f xs'
--- eval (Compr e ccs) = do
---   someFunc ccs
---   where
---   someFunc (cc':ccs')
---     | CCFor v e' <- cc' = do
---       val <- eval e'
---       case val of
---         ListVal xs -> do
---           a <- mapM (\x -> withBinding v x (someFunc ccs')) xs
---           az <- zip xs a-- zip a xs where a' == TrueValue
---           az' <- filter (\x t -> t) az
---           a' <- map (\t1 t2 -> t1) az'
---           return a'
---     | CCIf e' <- cc' = eval e'               
---     | otherwise = eval e
-eval (Compr e []) = do res <- eval e; return (ListVal [res])
+eval (Compr e []) = do 
+  res <- eval e; 
+  return res
 eval (Compr e [cc])
   | CCFor v e' <- cc = do
     val <- eval e'
     case val of
       ListVal xs -> do
-        a <- mapM (\x -> withBinding v x (eval e)) xs
+        a <- mapM (\x -> withBinding v x (eval (Compr e []))) xs
         return (ListVal a)
-        -- withBinding v (ListVal xs) (eval e)
       _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
   | CCIf e' <- cc = do
     e'' <- eval e'
-    if truthy e'' then do res <- eval e
-                          return (ListVal [res])
-    else do return (ListVal [])
--- !! This works kindof with two CCFor as in the example below except it makes it as a list of lists:
--- runComp (eval (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),CCFor "j" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"])])) [("n", IntVal 5)]
+    if truthy e''
+      then do eval (Compr e [])
+    else do return NoneVal
 eval (Compr e (cc:ccs))
   | CCFor v e' <- cc = do
     val <- eval e'
     case val of
       ListVal xs -> do
-        -- a <- mapM (\x -> withBinding v x (withBinding v x (eval (Compr e ccs)))) xs
-        a <- mapM (\x -> withBinding v x (eval (Compr e ccs))) xs
-        -- b <- eval (Compr e [cc])
+        a <- mapM (\x ->  withBinding v x (eval (Compr e ccs))) xs
         return (ListVal a)
-        -- withBinding v (ListVal xs) (eval e)
       _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
   | CCIf e' <- cc = do
     e'' <- eval e'
-    case e'' of
-      ListVal xs -> 
-        let a = filter (\x -> truthy e'') xs in
-        eval (Compr (Const (ListVal a)) ccs)
-      _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
--- eval (Compr e ccs) = do
---   return someFunc b ccs
---   where
---   someFunc b (cc':ccs')
---     | CCFor v e' <- cc' = do
---       val <- eval e'
---       case val of
---         ListVal xs -> do
---           a <- mapM (\x -> withBinding v x (somefunc b ccs')) xs
---           -- az <- zip xs a-- zip a xs where a' == TrueValue
---           -- az' <- filter (\x t -> t) az
---           -- a' <- map (\t1 t2 -> t1) az'
---           return a
---     | CCIf e' <- cc' = do return eval e'               
---     | otherwise = do eval b    
-  -- [ a | b <- [1..10], a <- [b..10], CCIf] = [1,2,3,4,5,6,7,8,9,10,2,3,4,5,6,7,8,9,10,3,4,5,6,7,8,9,10,4,5,6,7,8,9...
+    if truthy e''
+      then do eval (Compr e ccs)
+    else do return NoneVal
 
- -- (\f -> [x | x <- [0..10], f(x)])
--- [1 | 1 == 1]
--- runCom (eval (Compr (Const (IntVal 1))
---                  [CCIf (Oper Eq (Const (IntVal 1)) 
---                                 (Const (IntVal 1))
---                                    )]
--- )) []
-
--- eval (Compr e cc)
---  | CCFor v e' = do
---    val <- eval'
---    case val of
---      ListVal xs -> do 
-
--- eval (Compr e c) = do
-  
- -- (\f -> [x | x <- [0..10], f(x)])
--- eval (Compr e ccs) = do
---   someFunc ccs
---   where
---   someFunc (cc':ccs')
---     | CCFor v e' <- cc' = do
---       val <- eval e'
---       case val of
---         ListVal xs -> do
---           a <- mapM (\x -> withBinding v x (somefunc ccs')) xs
---           return 
---     | CCIf e' <- cc' = do 
---       e'' <- eval e'
---       x <- look e
---       a <- mapM (\x -> withBinding)                 
---     | otherwise = eval e
-    
-
--- eval (Compr e ccs) = do
---   someFunc b ccs
---   where
---   someFunc b (cc':ccs')
---     | CCFor v e' <- cc' = do
---       val <- eval e'
---       case val of
---         ListVal xs -> do
---           a <- mapM (\x -> withBinding v x (somefunc b ccs')) xs
---           -- az <- zip xs a-- zip a xs where a' == TrueValue
---           -- az' <- filter (\x t -> t) az
---           -- a' <- map (\t1 t2 -> t1) az'
---           return a
---     | CCIf e' <- cc' = eval e'               
---     | otherwise = eval b
-
--- lowestDivisor :: Integer -> Integer
--- lowestDivisor n = lowestDivisorHelper 2 n 
---     where 
---   lowestDivisorHelper m n
---         | (m divides n) = m  -- these should belong to lowestDivisorHelper
---         | otherwise = lowestDivisorHelper (m+1) n
--- eval (Compr e ccs)
---   | CCFor v e' <- cc = do
---     val <- eval e'
---     case val of 
---       ListVal xs -> do 
---         a <- mapM (\x -> withBinding v x (eval e)) xs
---         return (ListVal a)
---       _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
---   | CCIf e <- cc = do
---     e' <- eval e
---     if truthy e' then do 
---       return TrueVal
---     else do 
---       return FalseVal
-eval _ = undefined
-
-
--- (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2)])])
---       (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 10)])])
--- eval (CCFor v e) = do 
---   vs <- eval e 
---   return (mapM (\i -> withBinding v i (eval ss) vs))
-  -- case vs of
-  --   List [x:xs] -> do return undefined
-  --   _ -> do return undefined
--- eval (CCIf e) = undefined
-
-
-
--- execute (Call "range" [Const (IntVal 2),Var "n"])
--- Likewise, exec p is the computation arising from executing the program (or program fragment) p, with 
--- no nominal return value, but with any side effects in p still taking place in the computation.
-exec :: Program -> Comp () -- Program = [Stmt]
+exec :: Program -> Comp ()
 exec [] = return ()
--- exec [st]
---   | (SDef v e) <- st = 
---     do eval e
---        exec []      
---   | (SExp e) <- st = 
---     do eval e
---        exec []
 exec (h:ss)
   | (SDef v e) <- h =
       do c <- eval e
@@ -323,20 +191,3 @@ execute :: Program -> ([String], Maybe RunError)
 execute p = case runComp (exec p) [] of
   (Left err, out) -> (out, Just err)
   (Right _, out) ->  (out, Nothing)
-
--- >>> list(range(10,-10,1))
--- []
--- >>> list(range(-10, 10, 1))
--- [-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
--- >>> list(range(-10, 10, -1))
--- []
--- if z < 0 
---   then let a = 
---   else let a = [min..max]
---   in [IntVal x | x <- a, x `mod` z == 0]
---foldl (flip (:)) [] [min..max] 
-
--- (x >= y && z > 0) || (x <= y && z < 0) = ListVal []
--- z == 0 = EBadArg "Stepsize may not be 0"[min x y..max x y - 1]
-
--- runComp (Call "range" [Const (IntVal 10)]) [] 
