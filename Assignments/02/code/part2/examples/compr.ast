@@ -1,0 +1,29 @@
+(Compr (Oper Times (Var "x") (Var "x"))
+             [CCFor "x" (Call "range" [Const (IntVal 10)])
+             ,CCIf (Oper Eq (Const (IntVal 1)) (Const (IntVal 1)))
+             ])
+(Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 10)]),CCIf (Oper Eq (Const (IntVal 1)) (Const (IntVal 1)))])
+
+(Compr (Oper Times (Var "x") (Var "x"))
+             [CCFor "x" (Call "range" [Const (IntVal 10)])])
+(Compr (Oper Times (Var "x") (Var "x")) [CCFor "x" (Call "range" [Const (IntVal 10)])])
+
+(Compr (Oper Times (Var "x") (Var "x"))
+             [CCFor "x" (Call "range" [Const (IntVal 10)])
+             ,CCIf (Oper Less (Var x) (Const (IntVal 50)))
+             ])
+(Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 10)]),CCIf (Oper Less (Var x) (Const (IntVal 50)))])
+
+(Compr (Oper Times (Var "x") (Var "y"))
+             [CCFor "x" (Call "range" [Const (IntVal 10)])
+             ,CCFor "j" (Call "range" [Const (IntVal 10), Const (IntVal 20)])
+             ])
+(Compr (Oper Times (Var "x") (Var "y"))[CCFor "x" (Call "range" [Const (IntVal 10)]),CCFor "j" (Call "range" [Const (IntVal 10), Const (IntVal 20)])])
+
+(Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),
+                        CCFor "j" (Call "range" [Oper Times (Var "i")
+                                                            (Const (IntVal 2)),
+                                                 Oper Times (Var "n") (Var "n"),
+                                                 Var "i"])])
+
+(Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),CCFor "j" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"])])
