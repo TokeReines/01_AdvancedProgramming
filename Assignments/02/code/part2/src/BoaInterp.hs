@@ -20,9 +20,6 @@ newtype Comp a = Comp {runComp :: Env -> (Either RunError a, [String])}
 
 instance Monad Comp where
   return a = Comp (\_e -> (Right a, []))
-  -- m >>= f = Comp (\e -> case runComp m e of
-  --                       (Left err, out) -> (Left err, out)
-  --                       (Right a, _) -> runComp (f a) e)
   m >>= f = Comp (\e -> case runComp m e of
                           (Left err, out) -> (Left err, out)
                           (Right a, out) -> case runComp (f a) e of
@@ -122,7 +119,7 @@ apply f v
       else if (x >= y && z > 0) || (x <= y && z < 0) then do return (ListVal [])
       else if z < 0 then do
         -- Range for desc list
-        return (ListVal [IntVal x' | x' <- reverse [y..x-1], (x'-y) `mod` z == 0])
+        return (ListVal [IntVal x' | x' <- reverse [y+1..x], (x'-y) `mod` z == 0])
       else do
         -- Range for asc list
         return (ListVal [IntVal x' | x' <- [x..y-1], (x'-x) `mod` z == 0])  --asc

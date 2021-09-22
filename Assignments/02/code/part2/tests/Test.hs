@@ -6,8 +6,6 @@ import BoaInterp
 
 import Test.Tasty
 import Test.Tasty.HUnit
-import BoaAST (Value(NoneVal, FalseVal))
-import Data.Bool (Bool(True))
 
 main :: IO ()
 main = defaultMain $ localOption (mkTimeout 1000000) tests
@@ -193,7 +191,8 @@ applyTest = testGroup "apply tests"
   , testCase "apply \"range\" [IntVal 4, IntVal 2]" $ runComp (apply "range" [IntVal 4, IntVal 2]) [] @?= (Right (ListVal []),[])
   , testCase "*apply \"range\" [IntVal 4, TrueVal]" $ runComp (apply "range" [IntVal 4, TrueVal]) [] @?= (Left (EBadArg "Only integer values allowed as augments for function \"range\""),[])
   , testCase "apply \"range\" [IntVal 0, IntVal 6, IntVal 2]" $ runComp (apply "range" [IntVal 0, IntVal 6, IntVal 2]) [] @?= (Right (ListVal [IntVal 0,IntVal 2, IntVal 4]),[])
-  , testCase "apply \"range\" [IntVal 6, IntVal 0, IntVal (-2)]" $ runComp (apply "range" [IntVal 6, IntVal 0, IntVal (-2)]) [] @?= (Right (ListVal [IntVal 4,IntVal 2, IntVal 0]),[])
+  , testCase "apply \"range\" [IntVal 6, IntVal 0, IntVal (-2)]" $ runComp (apply "range" [IntVal 6, IntVal 0, IntVal (-2)]) [] @?= (Right (ListVal [IntVal 6,IntVal 4, IntVal 2]),[])
+  , testCase "apply \"range\" [IntVal 10, IntVal 1, IntVal (-3)]" $ runComp (apply "range" [IntVal 10, IntVal 1, IntVal (-3)]) [] @?= (Right (ListVal [IntVal 10,IntVal 7, IntVal 4]),[])
   , testCase "apply \"range\" [IntVal 3, IntVal 10, IntVal 2]" $ runComp (apply "range" [IntVal 3, IntVal 10, IntVal 2]) [] @?= (Right (ListVal [IntVal 3,IntVal 5, IntVal 7, IntVal 9]),[])
   , testCase "apply \"range\" [IntVal 3, IntVal 11, IntVal 2]" $ runComp (apply "range" [IntVal 3, IntVal 11, IntVal 2]) [] @?= (Right (ListVal [IntVal 3,IntVal 5, IntVal 7, IntVal 9]),[])
   , testCase "apply \"range\" [IntVal 0, IntVal 6, IntVal (-2)]" $ runComp (apply "range" [IntVal 0, IntVal 6, IntVal (-2)]) [] @?= (Right (ListVal []),[])
@@ -206,22 +205,29 @@ applyTest = testGroup "apply tests"
   ]
 
 evalTest = testGroup "eval tests" 
-  [ testCase "eval (Const (IntVal 1))" $ runComp (eval (Const (IntVal 1))) [] @?= (Right (IntVal 1),[])
+  [ -- Const
+    testCase "eval (Const (IntVal 1))" $ runComp (eval (Const (IntVal 1))) [] @?= (Right (IntVal 1),[])
+  , testCase "eval (Const (IntVal 1))" $ runComp (eval (Const (IntVal 2147483648))) [] @?= (Right (IntVal 2147483648),[])
+  , testCase "eval (Const (IntVal 1))" $ runComp (eval (Const (IntVal (-2147483649)))) [] @?= (Right (IntVal (-2147483649)),[])
+    -- Var
   , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) [] @?= (Left (EBadVar "x"),[])
-  , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) [] @?= (Left (EBadVar "x"),[])
-  , testCase "eval (Compr (Oper Times (Var \"x\") (Var \"x\"))[CCFor \"x\" (Call \"range\" [Const (IntVal 4)])])" $ runComp (eval (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 4)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 4,IntVal 9]),[])
-  , testCase "compr" $ runComp (eval (Compr (Const (IntVal 1))[CCIf (Oper Eq (Const (IntVal 1)) (Const (IntVal 1)))])) [] @?= (Right (IntVal 1),[])
-  , testCase "compr2" $ runComp (eval (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),CCFor "j" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"])])) [("n", IntVal 5)] @?= (Right (IntVal 1),[])
+  , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) [("x", IntVal 4)] @?= (Right (IntVal 4),[])
+  , testCase "eval (Var \"x\")" $ runComp (eval (Var "x")) [("x", IntVal 4), ("x", IntVal 5)] @?= (Right (IntVal 4),[])
+  , testCase "eval (Var \"x\")" $ runComp (eval (Var "y")) [("x", IntVal 4), ("x", IntVal 5), ("y", IntVal 6)] @?= (Right (IntVal 6),[])
+  , testCase "eval (Var \"x\")" $ runComp (eval (Var "y")) [("y", IntVal 6), ("x", IntVal 4), ("x", IntVal 5)] @?= (Right (IntVal 6),[])
+    -- Oper - basic functionality and error handling as operate is tested thoroughly
+    
+    -- Compr
+  , testCase "compr [x*x for x in range(4)]" $ runComp (eval (Compr (Oper Times (Var "x") (Var "x"))[CCFor "x" (Call "range" [Const (IntVal 4)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 4,IntVal 9]),[])
+  , testCase "compr [1 | 1 == 1]" $ runComp (eval (Compr (Const (IntVal 1))[CCIf (Oper Eq (Const (IntVal 1)) (Const (IntVal 1)))])) [] @?= (Right (ListVal [IntVal 1]),[])
+  , testCase "compr [x for x in range(4)]" $ runComp (eval (Compr (Var "x") [CCFor "x" (Call "range" [Const (IntVal 4)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 2,IntVal 3]),[])
+  , testCase "compr [x*x for x in range(5)]" $ runComp (eval (Compr (Oper Times (Var "x") (Var "x")) [CCFor "x" (Call "range" [Const (IntVal 5)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 4,IntVal 9,IntVal 16]),[])
+  , testCase "compr [j for i in range(2, n) for j in range(i*2, n*n, i)] n=4" $ runComp (eval (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),CCFor "j" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"])])) [("n", IntVal 4)] @?= (Right (ListVal [IntVal 4,IntVal 6,IntVal 8,IntVal 10,IntVal 12,IntVal 14, IntVal 6,IntVal 9,IntVal 12,IntVal 15]),[])
+  , testCase "compr [2+x | for x in range(0,2) if x == 1]" $ runComp (eval (Compr (Oper Plus (Const (IntVal 2)) (Var "x")) [CCFor "x" (Call "range" [Const (IntVal 0), Const (IntVal 2)]), CCIf (Oper Eq (Var "x") (Const (IntVal 1)))])) [] @?= (Right (ListVal [IntVal 3]),[])
+  , testCase "compr [[2+x] | for x in range(0,5) if x > 1]" $ runComp (eval (Compr (List [Var "x"]) [CCFor "x" (Call "range" [Const (IntVal 0), Const (IntVal 5)]), CCIf (Oper Greater (Var "x") (Const (IntVal 1)))])) [] @?= (Right (ListVal [ListVal [IntVal 4], ListVal [IntVal 5], ListVal [IntVal 6]]),[])
   ] 
 
 stubbyTest = testGroup "Stubby tests" 
-  [testCase "crash test" $
-    execute [SExp (Call "print" [Oper Plus (Const (IntVal 2))
-                                           (Const (IntVal 2))]),
-             SExp (Var "hello")]
-      @?= (["4"], Just (EBadVar "hello"))
-  -- , testCase "execute misc.ast from handout" $
-  --    do pgm <- read <$> readFile "examples/misc.ast"
-  --       out <- readFile "examples/misc.out"
-  --       execute pgm @?= (lines out, Nothing)
+  [testCase "crash test" $ execute [SExp (Call "print" [Oper Plus (Const (IntVal 2)) (Const (IntVal 2))]), SExp (Var "hello")] @?= (["4"], Just (EBadVar "hello"))
+  , testCase "execute misc.ast from handout" $ do pgm <- read <$> readFile "examples/misc.ast"; out <- readFile "examples/misc.out"; execute pgm @?= (lines out, Nothing)
   ]
