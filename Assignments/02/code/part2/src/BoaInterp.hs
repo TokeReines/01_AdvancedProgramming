@@ -148,40 +148,26 @@ eval (Call f xs) = do
   xs' <- mapM eval xs
   apply f xs'
 eval (Compr e []) = do eval e
-eval (Compr e (cc:ccs))
-  | CCFor v e' <- cc = do
-    val <- eval e'
-    case val of
-      ListVal xs -> do
-    --     -- a <- mapM (\x ->  withBinding v x (concat (Compr e ccs))) xs
-        -- a <- evalCompr ccs
-        
-        a <- mapM (\x ->  withBinding v x (evalCompr ccs)) xs
-        return (ListVal (concat a))
-      _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
-  | CCIf e' <- cc = do
-    e'' <- eval e'
-    return NoneVal
+eval (Compr e cc) = do
+  a <- evalCompr cc e
+  return (ListVal a)
 
--- evalCompr :: [CClause] -> [Value]
--- evalCompr [] = []
--- evalCompr (cc:ccs)
---   | CCFor v e <- cc = 
-      
-evalCompr :: [CClause] -> Comp [Value]
-evalCompr [] = return []
-evalCompr (cc:ccs)
+evalCompr :: [CClause] -> Exp -> Comp [Value]
+evalCompr [] e = do e' <- eval e; return [e']
+evalCompr (cc:ccs) exp
   | CCFor v e <- cc = do
       e' <- eval e
       case e' of
         ListVal xs -> do
-          eval (Compr e ccs)
-          return xs
+          a <- mapM (\x ->  withBinding v x (evalCompr ccs exp)) xs
+          return (concat a)
+          -- eval (Compr e ccs)
         _ -> do abort (EBadArg "CCFor clause needs to evaluate to a list")
   | CCIf e <- cc = do
     e' <- eval e
-    if truthy e' then do evalCompr ccs
+    if truthy e' then do evalCompr ccs exp
     else do return []
+
 -- runComp (eval (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),CCFor "j" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"]), CCFor "l" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"])])) [("n", IntVal 4)]
 exec :: Program -> Comp ()
 exec [] = return ()

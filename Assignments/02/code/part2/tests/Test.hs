@@ -227,7 +227,7 @@ evalTest = testGroup "eval tests"
   , testCase "compr [x*x for x in range(5)]" $ runComp (eval (Compr (Oper Times (Var "x") (Var "x")) [CCFor "x" (Call "range" [Const (IntVal 5)])])) [] @?= (Right (ListVal [IntVal 0,IntVal 1,IntVal 4,IntVal 9,IntVal 16]),[])
   , testCase "compr [j for i in range(2, n) for j in range(i*2, n*n, i)] n=4" $ runComp (eval (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),CCFor "j" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"])])) [("n", IntVal 4)] @?= (Right (ListVal [IntVal 4,IntVal 6,IntVal 8,IntVal 10,IntVal 12,IntVal 14, IntVal 6,IntVal 9,IntVal 12,IntVal 15]),[])
   , testCase "compr [2+x | for x in range(0,2) if x == 1]" $ runComp (eval (Compr (Oper Plus (Const (IntVal 2)) (Var "x")) [CCFor "x" (Call "range" [Const (IntVal 0), Const (IntVal 2)]), CCIf (Oper Eq (Var "x") (Const (IntVal 1)))])) [] @?= (Right (ListVal [IntVal 3]),[])
-  , testCase "compr [[2+x] | for x in range(0,5) if x > 1]" $ runComp (eval (Compr (List [Var "x"]) [CCFor "x" (Call "range" [Const (IntVal 0), Const (IntVal 5)]), CCIf (Oper Greater (Var "x") (Const (IntVal 1)))])) [] @?= (Right (ListVal [ListVal [IntVal 4], ListVal [IntVal 5], ListVal [IntVal 6]]),[])
+  , testCase "compr [[x] | for x in range(0,5) if x > 1]" $ runComp (eval (Compr (List [Var "x"]) [CCFor "x" (Call "range" [Const (IntVal 0), Const (IntVal 5)]), CCIf (Oper Greater (Var "x") (Const (IntVal 1)))])) [] @?= (Right (ListVal [ListVal [IntVal 2], ListVal [IntVal 3], ListVal [IntVal 4]]),[])
   ] 
 
 stubbyTest = testGroup "Stubby tests" 
