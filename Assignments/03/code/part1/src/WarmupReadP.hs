@@ -37,7 +37,7 @@ data Exp = Num Int | Negate Exp | Add Exp Exp
 
 parseString :: String -> Either ParseError Exp
 parseString s =
-  case readP_to_S(do a <- pE; eof; return a) s of
+  case readP_to_S(do whitespace; a <- pE; eof; return a) s of
     [] -> Left "cannot parse"
     [(a,_)] -> Right a -- the_must be "", since 'eof' ok_-> error"oops, my grammar is ambiguous!
     _ -> error "You've made an oopsie"
