@@ -147,7 +147,6 @@ eval (List x) = do
 eval (Call f xs) = do
   xs' <- mapM eval xs
   apply f xs'
-eval (Compr e []) = do eval e
 eval (Compr e cc) = do
   a <- evalCompr cc e
   return (ListVal a)
