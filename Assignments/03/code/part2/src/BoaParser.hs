@@ -13,13 +13,13 @@ type Parser a = ReadP a
 type ParseError = String -- you may replace this
 
 parseString :: String -> Either ParseError Program
-parseString s = case readP_to_S(do whitespace; a <- pP; eof; return a) s of 
+parseString s = case readP_to_S(do whitespace; a <- pProgram; eof; return a) s of 
                                 [] -> Left "cannot parse"
                                 [(a,_)] -> Right a
                                 _ -> error "You've made an oopsie"
 
-pP :: Parser Program
-pP = do stmts <- pStmts;  return stmts;
+pProgram :: Parser Program
+pProgram = do stmts <- pStmts;  return stmts;
 
 pStmts :: Parser [Stmt] -- or Parser Program. ! Unsure about the order of these
 pStmts = do stmt <- pStmt; return [stmt]
@@ -27,15 +27,18 @@ pStmts = do stmt <- pStmt; return [stmt]
          do stmt <- pStmt; symbol ';'; stmts <- pStmts; return (stmt : stmts); 
 
 pStmt :: Parser Stmt
-pStmt = do i <- pI; symbol '='; e <- pExp; return (SDef i e)
-        <|>
+pStmt = 
+        -- do i <- pI; symbol '='; e <- pExp; return (SDef i e)
+        -- <|>
         do e <- pExp; return (SExp e)
 
 pExp :: Parser Exp 
 pExp = do n <- pNum; return (Const (IntVal n))
+       <|>
+       do s <- pStr; return (Const (StringVal s))
 
-pOp :: Parser Op
-pOp = undefined 
+pOper :: Parser Op
+pOper = undefined 
 
 pCCz :: Parser CClause 
 pCCz = undefined 
@@ -43,29 +46,43 @@ pCCz = undefined
 pCCi :: Parser Exp
 pCCi = undefined 
 
-pCCf :: Parser (VName -> Exp)
+pCCf :: Parser (String -> Exp)
 pCCf = undefined 
 
-pI :: Parser VName
-pI = undefined
+pIdent :: Parser String -- Or VName or FName maybe in an either Monad?
+pIdent = undefined
 
 pNum :: Parser Int
-pNum = do symbol '-';  n <- pNum; return (-n)
+pNum = lexeme $ do symbol '-';  n <- pNum; return (-n)
        <|>
-       do symbol '0'; symbol '0'; pfail;
-       <|>
-       do ds <- munch1 isDigit; return (read ds)
-
+       do ds <- munch1 isDigit;
+          case ds of
+            [] -> pfail
+            [d] ->  return (ord d - ord '0')
+            (d:ds') ->  if d == '0' then pfail else return (read (d:ds'))
 
 pStr :: Parser String
-pStr = undefined 
+pStr = do 
+    symbol '\''
+    s <- many (`notElem` "'" <|> (char '\\' >> IsAscii);
+    -- s <- between (char '\'') (char '\'') (many (escaped <|> normalChar))
+    symbol '\''; 
+    return s  
 
+-- pStr = do symbol '\''; s <- pStr; return s;
+--        <|>
 
 
 -- Helper functions
+        
+reservedIdents = ["None", "True", "False", "for", "if", "in", "not"]
+
+oneOf :: [Char] -> ReadP Char
+oneOf cs = choice [char c | c <- cs]
 
 symbol :: Char -> Parser ()
 symbol s = lexeme $ do satisfy(s ==); return ()
+
 
 whitespace :: Parser ()
 whitespace = do munch isSpace; return ()
