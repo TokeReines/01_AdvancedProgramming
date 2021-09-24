@@ -42,9 +42,9 @@ look v = Comp (\e -> case lookup v e of
                       Nothing -> (Left $ EBadVar v, [])
                       )
 -- Runs  the  computation m with x bound  to v,  
--- in  addition  to  any  othercurrent bindings
+-- in  addition  to  any  other current bindings
 withBinding :: VName -> Value -> Comp a -> Comp a
-withBinding x v m = Comp(\e -> runComp m ((x, v) : e)) -- Might give duplicate variables in env
+withBinding x v m = Comp(\e -> runComp m ((x, v) : e))
 
 output :: String -> Comp ()
 output s = Comp (\_e -> (Right (), [s]))
