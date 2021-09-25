@@ -4,8 +4,8 @@ module BoaParser (ParseError, parseString) where
 
 import BoaAST
 -- add any other other imports you need
-import Text.ParserCombinators.ReadP
 import Control.Applicative ((<|>))
+import Text.ParserCombinators.ReadP
 import Data.Char
 
 type Parser a = ReadP a
@@ -23,7 +23,7 @@ pProgram = do stmts <- pStmts;  return stmts;
 
 pStmts :: Parser [Stmt] -- or Parser Program. ! Unsure about the order of these
 pStmts = do stmt <- pStmt; return [stmt]
-         <|> 
+         (<|>)
          do stmt <- pStmt; symbol ';'; stmts <- pStmts; return (stmt : stmts); 
 
 pStmt :: Parser Stmt
@@ -64,16 +64,27 @@ pNum = lexeme $ do symbol '-';  n <- pNum; return (-n)
 pStr :: Parser String
 pStr = do 
     symbol '\''
-    s <- many (`notElem` "'" <|> (char '\\' >> IsAscii);
+    s <- many character;
     -- s <- between (char '\'') (char '\'') (many (escaped <|> normalChar))
     symbol '\''; 
-    return s  
+    return concat s  
 
 -- pStr = do symbol '\''; s <- pStr; return s;
 --        <|>
 
 
 -- Helper functions
+noneEscape :: Parser String
+noneEscape = oneOf "\\\"\n";
+
+character :: Parser String
+character = try (string "\\\\") <|> try (string "\\\"")
+
+escape :: Parser String
+escape = do
+    e <- char '\\'
+    c <- oneOf "n\"\\"
+    return [e, c]
         
 reservedIdents = ["None", "True", "False", "for", "if", "in", "not"]
 
