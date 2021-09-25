@@ -16,8 +16,18 @@ module WarmupParsec where
 -- E' :== "+" T E' | "-" T E' | E
 -- T ::= num | "(" E ")"
 
+-- ! Properbly more correct?
+-- Rewritten grammar, without left-recursion:
+-- E ::= T E' | T
+-- E' :== "+" T E' | "-" T E' | E
+-- T ::= num | "(" E ")" | "-" E
+
 import Text.ParserCombinators.Parsec  -- exports a suitable type ParseError
 -- import Control.Applicative ((<|>))
+import Text.Parsec
+import Text.Parsec.Char
+import Text.Parsec.Prim
+import Text.Parsec
 import Data.Char
 
 data Exp = Num Int | Negate Exp | Add Exp Exp
@@ -25,29 +35,30 @@ data Exp = Num Int | Negate Exp | Add Exp Exp
 
 -- Optional: if not attempted, leave as undefined
 parseString :: String -> Either ParseError Exp
-parseString s = parse pE "" s
+parseString = parse (do spaces; a <- pE; eof; return a) ""
 
 
 -- -- E ::= T E' | "-" T E'
 pE :: Parser Exp
-pE = do symbol '-'; e <- pT; pE' (Negate e);
+pE = do e <- pT; pE' e;
      <|> 
-     do e <- pT; pE' e;
--- E' :== "+" T E' | "-" T E' | E
+     do symbol '-'; e <- pT; pE' (Negate e);
+
+-- -- E' :== "+" T E' | "-" T E' | E
 pE' :: Exp -> Parser Exp
 pE' e1 =  do ao <- pAddOp; e2 <- pT; pE' (ao e1 e2)
           <|>
           do no <- pNegOp; e2 <- pT; pE' (Add e1 (no e2))
           <|> return e1
 
--- T ::= "(" E ")" | num 
+-- -- T ::= "(" E ")" | num 
 pT :: Parser Exp
-pT = do symbol '('; e <- pE; symbol ')'; return e
+pT = do pNum;
      <|>
-     do pNum;
+     do symbol '('; e <- pE; symbol ')'; return e
 
 pNum :: Parser Exp
-pNum =  lexeme $ do ds <- many $ oneOf "0123456789"; return $ Num (read ds)
+pNum =  lexeme $ do ds <- many1 digit; return $ Num (read ds :: Int)
 
 pAddOp :: Parser (Exp -> Exp -> Exp)
 pAddOp = lexeme $ do symbol '+'; return Add
@@ -56,13 +67,10 @@ pNegOp :: Parser (Exp -> Exp)
 pNegOp = lexeme $ do symbol '-'; return Negate
 
 symbol :: Char -> Parser ()
-symbol s = lexeme $ do satisfy(s ==); return ()
-
-whitespace :: Parser ()
-whitespace = do many $ oneOf [' ']; return ()
+symbol s = lexeme $ do satisfy(s ==) <?> [s]; return ()
 
 lexeme :: Parser a -> Parser a
-lexeme p = do a <- p; whitespace; return a
+lexeme p = do a <- p; spaces; return a
 
 resultOfString = Right (Add (Add (Negate (Num 1)) (Num 23)) (Negate (Negate (Num 456))))
 testParseString =  parseString "-1+23-(-456)" == resultOfString
