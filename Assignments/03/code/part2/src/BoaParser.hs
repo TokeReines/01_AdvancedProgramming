@@ -28,34 +28,46 @@ pStmt =
 pExp :: Parser Exp
 pExp =
   do Const . IntVal <$> pNum -- n <- pNum; return (Const (IntVal n))
-    <|> do Const . StringVal <$> pStr -- s <- pStr; return (Const (StringVal s))
-    <|> do Const <$> pNoneTrueFalse -- v <- pNoneTrueFalse; return $ Const v
-    <|> do Var <$> pIdent -- do i <- pIdent; return $ Var i --! Needs tests
+    <|> do Const . StringVal <$> pStr;  -- s <- pStr; return (Const (StringVal s))
+    <|> do Const <$> pNoneTrueFalse;  -- v <- pNoneTrueFalse; return $ Const v
+    <|> do Var <$> pIdent; -- do i <- pIdent; return $ Var i --! Needs tests do 
+    --  chainl1 pExp pOper-- e1 <- pExp; o <-pOper; e2 <- pExp; return e1 e2  -- e <- pExp; oper exp
+    -- <|> not Expr
+    -- <|> do symbol '('; e <- pExp; symbol ')'; return e
+    -- <|> do i <- pIden; symbol '('; e <- pE; symbol ')'; return e
+    -- <|> [ Exprz ]
+    -- <|> [ Expr ForClause Clausez ]
+    
 
 -- <|> do i <- pIdent; return (VName x)
 
 pOper :: Parser Op -- (Op -> Exp -> Exp) -- Use chain1l for this
 pOper =
   lexeme $
-    do symbol '+'; return Plus
-      <|> do symbol '-'; return Minus
-      <|> do symbol '*'; return Times
-      <|> do string "//"; return Div
-      <|> do symbol '%'; return Mod
-      <|> do string "=="; return Eq
+      do Plus <$ symbol '+';
+      <|> do Minus <$ symbol '-'; 
+      <|> do Times <$ symbol '*';
+      <|> do Div <$ string "//"; 
+      <|> do Mod <$ symbol '%'; 
+      <|> do Eq <$ string "==";
       -- <|> do string "!="; return (Not Eq)
-      <|> do symbol '<'; return Less
+      <|> do Less <$  symbol '<';
       -- <|> do string "<="; return ?
-      <|> do symbol '>'; return Greater
+      <|> do Greater <$ symbol '>'; 
       -- <|> do string ">="; return ?
+      -- <|> do string "in" return ?
       -- <|> do string "not"; spaces; string "in" return ?
-      
 
-pCCz :: Parser CClause
-pCCz = undefined
+pOperLA = undefined
+pOperRA = undefined
 
-pCCi :: Parser Exp
-pCCi = undefined
+-- ForClause
+pForC :: Parser CClause
+pForC = undefined
+
+-- IfClause
+pIfC :: Parser Exp
+pIfC = undefined
 
 pCCf :: Parser (String -> Exp)
 pCCf = undefined
