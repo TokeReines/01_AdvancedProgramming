@@ -11,6 +11,8 @@ import Text.ParserCombinators.Parsec
 parseString :: String -> Either ParseError Program
 parseString = parse (do spaces; a <- pProgram; eof; return a) ""
 
+-- Main Parsers
+
 pProgram :: Parser Program
 pProgram = do pStmts
 
@@ -28,37 +30,44 @@ pStmt =
 pExp :: Parser Exp
 pExp =
   do Const . IntVal <$> pNum -- n <- pNum; return (Const (IntVal n))
-    <|> do Const . StringVal <$> pStr;  -- s <- pStr; return (Const (StringVal s))
-    <|> do Const <$> pNoneTrueFalse;  -- v <- pNoneTrueFalse; return $ Const v
-    <|> do Var <$> pIdent; -- do i <- pIdent; return $ Var i --! Needs tests do 
+    <|> do Const . StringVal <$> pStr -- s <- pStr; return (Const (StringVal s))
+    <|> do Const <$> pNoneTrueFalse -- v <- pNoneTrueFalse; return $ Const v
+    <|> do Var <$> pIdent -- do i <- pIdent; return $ Var i --! Needs tests do
     --  chainl1 pExp pOper-- e1 <- pExp; o <-pOper; e2 <- pExp; return e1 e2  -- e <- pExp; oper exp
-    -- <|> not Expr
-    -- <|> do symbol '('; e <- pExp; symbol ')'; return e
-    -- <|> do i <- pIden; symbol '('; e <- pE; symbol ')'; return e
-    -- <|> [ Exprz ]
-    -- <|> [ Expr ForClause Clausez ]
-    
+    -- <|> Oper
+    <|> try (do string "not"; notFollowedBy (satisfy isBoaAlphaNum); spaces; Not <$> pExp)
+    <|> do symbol '('; e <- pExp; symbol ')'; return e;
+    <|> do i <- pIdent; symbol '('; ez <- pExpz; symbol ')'; return $ Call i  ez;
+    <|> do symbol '['; ez <- pExpz; symbol ']'; return $ List ez;
+    <|> do symbol '['; e <- pExp; fc <- pForC; cz <- pCz;  symbol ']'; return $ Compr e (fc:cz);
+
+-- <|> do symbol '('; e <- pExp; symbol ')'; return e
+-- <|> do i <- pIden; symbol '('; e <- pE; symbol ')'; return e
+-- <|> [ Exprz ]
+-- <|> [ Expr ForClause Clausez ]
 
 -- <|> do i <- pIdent; return (VName x)
 
 pOper :: Parser Op -- (Op -> Exp -> Exp) -- Use chain1l for this
 pOper =
   lexeme $
-      do Plus <$ symbol '+';
-      <|> do Minus <$ symbol '-'; 
-      <|> do Times <$ symbol '*';
-      <|> do Div <$ string "//"; 
-      <|> do Mod <$ symbol '%'; 
-      <|> do Eq <$ string "==";
-      -- <|> do string "!="; return (Not Eq)
-      <|> do Less <$  symbol '<';
-      -- <|> do string "<="; return ?
-      <|> do Greater <$ symbol '>'; 
-      -- <|> do string ">="; return ?
-      -- <|> do string "in" return ?
-      -- <|> do string "not"; spaces; string "in" return ?
+    do Plus <$ symbol '+'
+      <|> do Minus <$ symbol '-'
+      <|> do Times <$ symbol '*'
+      <|> do Div <$ string "//" -- ! Might need a try
+      <|> do Mod <$ symbol '%'
+      <|> do Eq <$ string "==" -- ! Might need a try
+      -- <|> do string "!="; return (Not Eq) -- ! Might need a try
+      <|> do Less <$ symbol '<'
+      -- <|> do string "<="; return ? -- ! Might need a try
+      <|> do Greater <$ symbol '>'
+
+-- <|> do string ">="; return ?
+-- <|> do string "in" return ?
+-- <|> do string "not"; spaces; string "in" return ?
 
 pOperLA = undefined
+
 pOperRA = undefined
 
 -- ForClause
@@ -69,30 +78,40 @@ pForC = undefined
 pIfC :: Parser Exp
 pIfC = undefined
 
+-- Clausez 
+pCz :: Parser [CClause]
+pCz = undefined 
+
 pCCf :: Parser (String -> Exp)
 pCCf = undefined
 
+pExpz :: Parser [Exp]
+pExpz = undefined
+
+pExps :: Parser Exp
+pExps = undefined 
+
 pIdent :: Parser String -- Or VName or FName maybe in an either Monad?
-pIdent = lexeme $ do
+pIdent = lexeme $ try (do
   c <- satisfy isIdentPrefixChar
   cs <- many (satisfy isIdentChar)
   let i = c : cs
   if i `notElem` reservedIdents
     then return i
-    else fail "variable can't be a reserved word"
+    else fail "variable can't be a reserved word")
 
 pNum :: Parser Int
 pNum =
   lexeme $ do
-        s <- numSign
-        ds <- many1 digit
-        case ds of
-          [] -> fail ""
-          [d] -> return $ digitToInt d * s
-          (d : ds') ->
-            if d == '0'
-              then fail "num constants cant start with 0"
-              else return (read (d : ds') * s)
+    s <- numSign
+    ds <- many1 digit
+    case ds of
+      [] -> fail ""
+      [d] -> return $ digitToInt d * s
+      (d : ds') ->
+        if d == '0'
+          then fail "num constants cant start with 0"
+          else return (read (d : ds') * s)
 
 pStr :: Parser String
 pStr = do
@@ -122,7 +141,8 @@ pNoneTrueFalse =
       <|> try (do string "True"; return TrueVal)
       <|> try (do string "False"; return TrueVal)
 
----- Helper functions
+
+-- Sub parsers
 
 symbol :: Char -> Parser ()
 symbol s = lexeme $ do satisfy (s ==) <?> [s]; return ()
@@ -130,26 +150,33 @@ symbol s = lexeme $ do satisfy (s ==) <?> [s]; return ()
 lexeme :: Parser a -> Parser a
 lexeme p = do a <- p; spaces; return a
 
+
+-- Helper functions
+
 numSign :: Parser Int
-numSign = do c <- symbol '-'; return (-1)
-          <|> return 1
+numSign =
+  do c <- symbol '-'; return (-1)
+    <|> return 1
 
 -- Satisfy helpers
 
 isIdentPrefixChar :: Char -> Bool
-isIdentPrefixChar c = isAlpha c || c == '_'
+isIdentPrefixChar c = isBoaAlpha c || c == '_'
 
 isIdentChar :: Char -> Bool
-isIdentChar c = isAlpha c || c == '_' || isDigit c
+isIdentChar c = isBoaAlphaNum c || c == '_'
 
-isNumChar :: Char -> Bool
-isNumChar c =
-  let c' = ord c
-   in c' >= 32 && c' <= 126 -- Allow \t ? () || c == 9
+isBoaAlpha :: Char -> Bool 
+isBoaAlpha c = 
+  let c' = ord c in 
+    -- ord [65...90] = [A...Z] and [97...122] = [a...z]
+    (c' >= 65 && c' <= 90 ) || (c' >= 97 && c' <= 122 )
+
+isBoaAlphaNum :: Char -> Bool
+isBoaAlphaNum c = isDigit c  || isBoaAlpha c
 
 isStrChar :: Char -> Bool
 isStrChar c = isAscii c && isPrint c
-
 
 -- Constants
 
