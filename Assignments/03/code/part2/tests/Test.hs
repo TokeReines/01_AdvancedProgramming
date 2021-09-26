@@ -25,6 +25,7 @@ pNumTests = testGroup "pNum tests"
   , testCase "* 01" $ assertFailure' $ parseString "01"
   , testCase "* 007" $  assertFailure' $ parseString "007"  
   , testCase "* +7" $ assertFailure' $ parseString "+7"
+  , testCase "* --7" $ assertFailure' $ parseString "--7"
   , testCase "   -1" $ parseString "   -1" @?= Right [SExp (Const (IntVal (-1)))]
   ]
 

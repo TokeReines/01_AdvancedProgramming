@@ -6,7 +6,6 @@ import BoaAST
 -- add any other other imports you need
 
 import Data.Char
-import Foreign.C (CSize (CSize))
 import Text.ParserCombinators.Parsec
 
 parseString :: String -> Either ParseError Program
@@ -35,7 +34,7 @@ pExp =
 
 -- <|> do i <- pIdent; return (VName x)
 
-pOper :: Parser Op -- (Op -> Exp -> Exp) -- Use chainL for this
+pOper :: Parser Op -- (Op -> Exp -> Exp) -- Use chain1l for this
 pOper =
   lexeme $
     do symbol '+'; return Plus
@@ -44,7 +43,7 @@ pOper =
       <|> do string "//"; return Div
       <|> do symbol '%'; return Mod
       <|> do string "=="; return Eq
-      -- <|> do string "!="; return ?
+      -- <|> do string "!="; return (Not Eq)
       <|> do symbol '<'; return Less
       -- <|> do string "<="; return ?
       <|> do symbol '>'; return Greater
@@ -72,17 +71,16 @@ pIdent = lexeme $ do
 
 pNum :: Parser Int
 pNum =
-  lexeme $
-    do symbol '-'; n <- pNum; return (- n)
-      <|> do
+  lexeme $ do
+        s <- numSign
         ds <- many1 digit
         case ds of
           [] -> fail ""
-          [d] -> return (digitToInt d)
+          [d] -> return $ digitToInt d * s
           (d : ds') ->
             if d == '0'
               then fail "num constants cant start with 0"
-              else return (read (d : ds'))
+              else return (read (d : ds') * s)
 
 pStr :: Parser String
 pStr = do
@@ -96,7 +94,7 @@ pStr = do
         <|> try (do string "\\\'"; return ['\''])
         <|> try (do string "\\\n"; return [])
         <|> try (do string "\n"; return ['\n'])
-        -- ! Consider/ask what specific chars are allowed
+        -- TODO Consider/ask what specific chars are allowed
         <|> try
           ( do
               x <- noneOf ['\'', '\\']
@@ -120,6 +118,9 @@ symbol s = lexeme $ do satisfy (s ==) <?> [s]; return ()
 lexeme :: Parser a -> Parser a
 lexeme p = do a <- p; spaces; return a
 
+numSign :: Parser Int
+numSign = do c <- symbol '-'; return (-1)
+          <|> return 1
 
 -- Satisfy helpers
 
