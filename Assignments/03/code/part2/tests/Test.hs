@@ -10,7 +10,7 @@ main :: IO ()
 main = defaultMain $ localOption (mkTimeout 1000000) tests
 
 tests :: TestTree
-tests = testGroup "Tests" [pNumTests, pStrTest, pIdentTest]
+tests = testGroup "Tests" [pNumTests, pStrTest, pIdentTest, minimalTests]
 
 assertFailure' a = case a of 
   Left e -> return ()
@@ -64,12 +64,12 @@ pNoneTrueFalseTest = testGroup "pNoneTrueFalseTest"
 
   ]
 
--- tests = testGroup "Minimal tests" [
---   testCase "simple success" $
---     parseString "2 + two" @?=
---       Right [SExp (Oper Plus (Const (IntVal 2)) (Var "two"))],
---   testCase "simple failure" $
---     -- avoid "expecting" very specific parse-error messages
---     case parseString "wow!" of
---       Left e -> return ()  -- any message is OK
---       Right p -> assertFailure $ "Unexpected parse: " ++ show p]
+minimalTests = testGroup "Minimal tests" [
+  testCase "simple success" $
+    parseString "2 + two" @?=
+      Right [SExp (Oper Plus (Const (IntVal 2)) (Var "two"))],
+  testCase "simple failure" $
+    -- avoid "expecting" very specific parse-error messages
+    case parseString "wow!" of
+      Left e -> return ()  -- any message is OK
+      Right p -> assertFailure $ "Unexpected parse: " ++ show p]
