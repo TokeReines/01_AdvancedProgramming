@@ -24,8 +24,13 @@ pStmts =
 pStmt :: Parser Stmt
 pStmt =
   -- do i <- pIdent; symbol '='; e <- pExp; return (SDef i e)
-  do i <- pIdent; symbol '='; SDef i <$> pExp
-    <|> do SExp <$> pExp -- do e <- pExp; return (SExp e)
+  do i <- pIdent; symbol '='; SDef i <$> pExp'
+    <|> do SExp <$> pExp' -- do e <- pExp; return (SExp e)
+
+pExp' :: Parser Exp -- Called before Exp
+pExp' = do pOper1;
+        -- ! Add relational parser here
+        <|> do pExp
 
 pExp :: Parser Exp
 pExp =
@@ -33,20 +38,11 @@ pExp =
     <|> do Const . StringVal <$> pStr -- s <- pStr; return (Const (StringVal s))
     <|> do Const <$> pNoneTrueFalse -- v <- pNoneTrueFalse; return $ Const v
     <|> do Var <$> pIdent -- do i <- pIdent; return $ Var i --! Needs tests do
-    --  chainl1 pExp pOper-- e1 <- pExp; o <-pOper; e2 <- pExp; return e1 e2  -- e <- pExp; oper exp
-    -- <|> Oper
-    <|> try (do string "not"; notFollowedBy (satisfy isBoaAlphaNum); spaces; Not <$> pExp)
-    <|> do symbol '('; e <- pExp; symbol ')'; return e;
+    <|> try (do string "not"; notFollowedBy (satisfy isBoaAlphaNum); spaces; Not <$> pExp')
+    <|> do symbol '('; e <- pExp'; symbol ')'; return e; -- ! Move this to helper such that Oper can use it in chainl1
     <|> do i <- pIdent; symbol '('; ez <- pExpz; symbol ')'; return $ Call i  ez;
     <|> do symbol '['; ez <- pExpz; symbol ']'; return $ List ez;
-    <|> do symbol '['; e <- pExp; fc <- pForC; cz <- pCz;  symbol ']'; return $ Compr e (fc:cz);
-
--- <|> do symbol '('; e <- pExp; symbol ')'; return e
--- <|> do i <- pIden; symbol '('; e <- pE; symbol ')'; return e
--- <|> [ Exprz ]
--- <|> [ Expr ForClause Clausez ]
-
--- <|> do i <- pIdent; return (VName x)
+    <|> do symbol '['; e <- pExp'; fc <- pForC; cz <- pCz;  symbol ']'; return $ Compr e (fc:cz);
 
 pOper :: Parser Op -- (Op -> Exp -> Exp) -- Use chain1l for this
 pOper =
@@ -66,9 +62,46 @@ pOper =
 -- <|> do string "in" return ?
 -- <|> do string "not"; spaces; string "in" return ?
 
-pOperLA = undefined
+-- Precedence level low
+-- pOper0 :: Parser Exp
+-- pOper0 = pOper1 `chainl1` pRelOp;
 
-pOperRA = undefined
+-- ! This kind of works but as thy are non-associative it might just work to handle it in in pExp' and setting it before or after pOper depending one how the precedens is called
+-- pOper0' :: Parser Exp
+-- pOper0' = do a <- pOper1 `chainl1` pRelOp'; return (Not a);
+-- Precedence level medium
+pOper1 :: Parser Exp
+pOper1 = pOper2 `chainl1` pAddOp
+-- Precedence level high
+pOper2 :: Parser Exp
+pOper2 = pExp `chainl1` pMulOp
+
+-- pRelOp :: Parser (Exp -> Exp -> Exp) -- Use chain1l for this
+-- pRelOp = lexeme $
+--     do Oper Less <$ symbol '<'
+--     <|> do Oper Greater <$ symbol '>'
+--     <|> do Oper Eq <$ string "=="
+--     <|> do Oper In <$ string "in"
+
+-- pRelOp' :: Parser (Exp -> Exp -> Exp) -- Use chain1l for this
+-- pRelOp' = lexeme $
+--     do Oper Greater <$ string "<="
+--     <|> do Oper Less <$ string ">="
+--     <|> do Oper Div <$ string "!="
+--     <|> do Oper In <$ string "in"
+--     -- <|> do string "not"; spaces; string "in"; Oper In
+    
+
+pAddOp :: Parser (Exp -> Exp -> Exp) -- Use chain1l for this
+pAddOp =
+    do Oper Plus <$ symbol '+'
+    <|> do Oper Minus <$ symbol '-'
+
+pMulOp :: Parser (Exp -> Exp -> Exp) -- Use chain1l for this
+pMulOp =
+      do Oper Times <$ symbol '*'
+      <|> do Oper Div <$ string "//" -- ! Might need a try
+      <|> do Oper Mod <$ symbol '%'
 
 -- ForClause
 pForC :: Parser CClause
@@ -80,7 +113,7 @@ pIfC = undefined
 
 -- Clausez 
 pCz :: Parser [CClause]
-pCz = undefined 
+pCz = undefined
 
 pCCf :: Parser (String -> Exp)
 pCCf = undefined
@@ -89,7 +122,7 @@ pExpz :: Parser [Exp]
 pExpz = undefined
 
 pExps :: Parser Exp
-pExps = undefined 
+pExps = undefined
 
 pIdent :: Parser String -- Or VName or FName maybe in an either Monad?
 pIdent = lexeme $ try (do
@@ -111,7 +144,7 @@ pNum =
       (d : ds') ->
         if d == '0'
           then fail "num constants cant start with 0"
-          else return (read (d : ds') * s)
+          else return $ read (d : ds') * s
 
 pStr :: Parser String
 pStr = do
@@ -166,9 +199,9 @@ isIdentPrefixChar c = isBoaAlpha c || c == '_'
 isIdentChar :: Char -> Bool
 isIdentChar c = isBoaAlphaNum c || c == '_'
 
-isBoaAlpha :: Char -> Bool 
-isBoaAlpha c = 
-  let c' = ord c in 
+isBoaAlpha :: Char -> Bool
+isBoaAlpha c =
+  let c' = ord c in
     -- ord [65...90] = [A...Z] and [97...122] = [a...z]
     (c' >= 65 && c' <= 90 ) || (c' >= 97 && c' <= 122 )
 
