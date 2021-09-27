@@ -23,50 +23,47 @@ pStmts =
 
 pStmt :: Parser Stmt
 pStmt =
-  -- do i <- pIdent; symbol '='; e <- pExp; return (SDef i e)
-  do i <- pIdent; symbol '='; SDef i <$> pExp''
-    <|> do SExp <$> pExp'' -- do e <- pExp; return (SExp e)
+  try (do i <- pIdent; symbol '='; SDef i <$> pExp)
+    <|> do SExp <$> pExp
 
-pExp'' :: Parser Exp
-pExp'' = do e1 <- pExp'; ro <- pRelNegOp; e2 <- pExp'; return $ Not (ro e1 e2)
-         <|> do e1 <- pExp'; ro <- pRelOp; e2 <- pExp'; return $ ro e1 e2
-         <|> pExp'
-
-pExp' :: Parser Exp -- Called before Exp
-pExp' = do pOper;
-        -- ! Add relational parser here
-        <|> do pExp
 
 pExp :: Parser Exp
-pExp =
-  try (do pNum) -- n <- pNum; return (Const (IntVal n))
-  <|> try (do Const . StringVal <$> pStr) -- s <- pStr; return (Const (StringVal s))
-  <|> try (do Const <$> pNoneTrueFalse) -- v <- pNoneTrueFalse; return $ Const v
-  <|> try (do Var <$> pIdent) -- do i <- pIdent; return $ Var i --! Needs tests do
-  -- <|> do lexeme $ string "not"; Not <$> pExp''
-  <|> do between (char '(') (char ')') pExp''
-   -- ! Move this to helper such that Oper can use it in chainl1
-  <|> do i <- pIdent; symbol '('; ez <- pExpz; symbol ')'; return $ Call i  ez;
-  <|> do symbol '['; ez <- pExpz; symbol ']'; return $ List ez;
-  <|> do symbol '['; e <- pExp; fc <- pForC; cz <- pCz;  symbol ']'; return $ Compr e (fc:cz);
+pExp = lexeme $
+         try (do e1 <- pExp'; ro <- pRelNegOp; e2 <- pExp'; return $ Not (ro e1 e2))
+         <|> try (do e1 <- pExp'; ro <- pRelOp; e2 <- pExp'; return $ ro e1 e2)
+         <|> pExp'
 
+pExp' :: Parser Exp 
+pExp' = do pOper;
+        <|> do pExp''
 
--- 
--- Relation
+pExp'' :: Parser Exp
+pExp'' =
+  do symbol '['; e <- pExp; fc <- pForC; cz <- pCz;  symbol ']'; return $ Compr e (fc:cz);
+  <|> try (do pNum) 
+  <|> try (do Const . StringVal <$> pStr) 
+  <|> try (do Const <$> pNoneTrueFalse) 
+  <|> try (do i <- pIdent; spaces; symbol '('; ez <- pExpz; symbol ')'; return $ Call i ez;)
+  <|> try (do Var <$> pIdent) 
+  <|> do lexeme $ string "not"; Not <$> pExp
+  <|> try (do between (symbol '(') (symbol ')') pExp)
+  <|> try (do e <- between (symbol '[') (symbol ']') pExpz; return $ List e;)
+  
 
 -- Precedence level low
 pOper = pOper' `chainl1` pAddOp
 -- Precedence level medium
-pOper' = pExp `chainl1` pMulOp
+pOper' = pOper'' `chainl1` pMulOp
+pOper'' = pExp''
 
 pRelOp :: Parser (Exp -> Exp -> Exp)
-pRelOp = try (do string "=="; return $ Oper Eq)
+pRelOp = lexeme $ try (do string "=="; return $ Oper Eq)
           <|> try (do string "in"; return $ Oper In)
           <|> do Oper Less <$ symbol '<'
           <|> do Oper Greater <$ symbol '>'
 
 pRelNegOp :: Parser (Exp -> Exp -> Exp)
-pRelNegOp = try (do string "!="; return $ Oper Eq)
+pRelNegOp = lexeme $ try (do string "!="; return $ Oper Eq)
           <|> try (do string "not"; spaces; string "in"; return $ Oper In)
           <|> try (do string "<="; return $ Oper Greater)
           <|> try (do string ">="; return $ Oper Less)
@@ -80,31 +77,31 @@ pAddOp =
 pMulOp :: Parser (Exp -> Exp -> Exp) -- Use chain1l for this
 pMulOp =
       do Oper Times <$ symbol '*'
-      <|> try (do string "//"; return $ Oper Div) 
+      <|> try (do string "//"; return $ Oper Div)
       <|> do Oper Mod <$ symbol '%'
 
 -- ForClause
 pForC :: Parser CClause
-pForC = undefined
+pForC = lexeme $ try (do string "for"; spaces; i <- pIdent; try (string "in"); spaces; e <- pExp; return $ CCFor i e)
 
 -- IfClause
-pIfC :: Parser Exp
-pIfC = undefined
+pIfC :: Parser CClause
+pIfC = lexeme $ do try (string "if"); spaces; CCIf <$> pExp;
 
 -- Clausez 
 pCz :: Parser [CClause]
-pCz = undefined
-
-pCCf :: Parser (String -> Exp)
-pCCf = undefined
+pCz = lexeme $ do f <- pForC; cz <- pCz; return (f : cz);
+      <|> do i <- pIfC; cz <- pCz; return (i : cz);
+      <|> return []
 
 pExpz :: Parser [Exp]
-pExpz = undefined
+pExpz = lexeme $ do pExp `sepBy` symbol ',';
 
-pExps :: Parser Exp
-pExps = undefined
+-- Not called anywhere in the code. Defined in the AST, which is why we kept it here.
+pExps :: Parser [Exp]
+pExps = lexeme $ do pExp `sepBy1` symbol ',';
 
-pIdent :: Parser String -- Or VName or FName maybe in an either Monad?
+pIdent :: Parser String
 pIdent = lexeme $ try (do
   c <- satisfy isIdentPrefixChar
   cs <- many (satisfy isIdentChar)
@@ -162,7 +159,8 @@ pNoneTrueFalse =
 -- Sub parsers
 
 symbol :: Char -> Parser ()
-symbol s = lexeme $ do satisfy (s ==) <?> [s]; return ()
+-- symbol s = lexeme $ do satisfy (s ==) <?> [s]; return ()
+symbol s = lexeme $ do satisfy (s ==); return ()
 
 lexeme :: Parser a -> Parser a
 lexeme p = do a <- p; spaces; return a
@@ -182,7 +180,7 @@ isRel = lexeme $
 
 numSign :: Parser Int
 numSign =
-  do c <- symbol '-'; return (-1)
+  do symbol '-'; return (-1)
     <|> return 1
 
 -- Satisfy helpers
