@@ -24,73 +24,53 @@ pStmts =
 pStmt :: Parser Stmt
 pStmt =
   -- do i <- pIdent; symbol '='; e <- pExp; return (SDef i e)
-  do i <- pIdent; symbol '='; SDef i <$> pExp'
-    <|> do SExp <$> pExp' -- do e <- pExp; return (SExp e)
+  do i <- pIdent; symbol '='; SDef i <$> pExp''
+    <|> do SExp <$> pExp'' -- do e <- pExp; return (SExp e)
+
+pExp'' :: Parser Exp
+pExp'' = do e1 <- pExp'; ro <- pRelNegOp; e2 <- pExp'; return $ Not (ro e1 e2)
+         <|> do e1 <- pExp'; ro <- pRelOp; e2 <- pExp'; return $ ro e1 e2
+         <|> pExp'
 
 pExp' :: Parser Exp -- Called before Exp
-pExp' = do pOper1;
+pExp' = do pOper;
         -- ! Add relational parser here
         <|> do pExp
 
 pExp :: Parser Exp
 pExp =
-  do Const . IntVal <$> pNum -- n <- pNum; return (Const (IntVal n))
-    <|> do Const . StringVal <$> pStr -- s <- pStr; return (Const (StringVal s))
-    <|> do Const <$> pNoneTrueFalse -- v <- pNoneTrueFalse; return $ Const v
-    <|> do Var <$> pIdent -- do i <- pIdent; return $ Var i --! Needs tests do
-    <|> try (do string "not"; notFollowedBy (satisfy isBoaAlphaNum); spaces; Not <$> pExp')
-    <|> do symbol '('; e <- pExp'; symbol ')'; return e; -- ! Move this to helper such that Oper can use it in chainl1
-    <|> do i <- pIdent; symbol '('; ez <- pExpz; symbol ')'; return $ Call i  ez;
-    <|> do symbol '['; ez <- pExpz; symbol ']'; return $ List ez;
-    <|> do symbol '['; e <- pExp'; fc <- pForC; cz <- pCz;  symbol ']'; return $ Compr e (fc:cz);
+  try (do pNum) -- n <- pNum; return (Const (IntVal n))
+  <|> try (do Const . StringVal <$> pStr) -- s <- pStr; return (Const (StringVal s))
+  <|> try (do Const <$> pNoneTrueFalse) -- v <- pNoneTrueFalse; return $ Const v
+  <|> try (do Var <$> pIdent) -- do i <- pIdent; return $ Var i --! Needs tests do
+  -- <|> do lexeme $ string "not"; Not <$> pExp''
+  <|> do between (char '(') (char ')') pExp''
+   -- ! Move this to helper such that Oper can use it in chainl1
+  <|> do i <- pIdent; symbol '('; ez <- pExpz; symbol ')'; return $ Call i  ez;
+  <|> do symbol '['; ez <- pExpz; symbol ']'; return $ List ez;
+  <|> do symbol '['; e <- pExp; fc <- pForC; cz <- pCz;  symbol ']'; return $ Compr e (fc:cz);
 
-pOper :: Parser Op -- (Op -> Exp -> Exp) -- Use chain1l for this
-pOper =
-  lexeme $
-    do Plus <$ symbol '+'
-      <|> do Minus <$ symbol '-'
-      <|> do Times <$ symbol '*'
-      <|> do Div <$ string "//" -- ! Might need a try
-      <|> do Mod <$ symbol '%'
-      <|> do Eq <$ string "==" -- ! Might need a try
-      -- <|> do string "!="; return (Not Eq) -- ! Might need a try
-      <|> do Less <$ symbol '<'
-      -- <|> do string "<="; return ? -- ! Might need a try
-      <|> do Greater <$ symbol '>'
 
--- <|> do string ">="; return ?
--- <|> do string "in" return ?
--- <|> do string "not"; spaces; string "in" return ?
+-- 
+-- Relation
 
 -- Precedence level low
--- pOper0 :: Parser Exp
--- pOper0 = pOper1 `chainl1` pRelOp;
-
--- ! This kind of works but as thy are non-associative it might just work to handle it in in pExp' and setting it before or after pOper depending one how the precedens is called
--- pOper0' :: Parser Exp
--- pOper0' = do a <- pOper1 `chainl1` pRelOp'; return (Not a);
+pOper = pOper' `chainl1` pAddOp
 -- Precedence level medium
-pOper1 :: Parser Exp
-pOper1 = pOper2 `chainl1` pAddOp
--- Precedence level high
-pOper2 :: Parser Exp
-pOper2 = pExp `chainl1` pMulOp
+pOper' = pExp `chainl1` pMulOp
 
--- pRelOp :: Parser (Exp -> Exp -> Exp) -- Use chain1l for this
--- pRelOp = lexeme $
---     do Oper Less <$ symbol '<'
---     <|> do Oper Greater <$ symbol '>'
---     <|> do Oper Eq <$ string "=="
---     <|> do Oper In <$ string "in"
+pRelOp :: Parser (Exp -> Exp -> Exp)
+pRelOp = try (do string "=="; return $ Oper Eq)
+          <|> try (do string "in"; return $ Oper In)
+          <|> do Oper Less <$ symbol '<'
+          <|> do Oper Greater <$ symbol '>'
 
--- pRelOp' :: Parser (Exp -> Exp -> Exp) -- Use chain1l for this
--- pRelOp' = lexeme $
---     do Oper Greater <$ string "<="
---     <|> do Oper Less <$ string ">="
---     <|> do Oper Div <$ string "!="
---     <|> do Oper In <$ string "in"
---     -- <|> do string "not"; spaces; string "in"; Oper In
-    
+pRelNegOp :: Parser (Exp -> Exp -> Exp)
+pRelNegOp = try (do string "!="; return $ Oper Eq)
+          <|> try (do string "not"; spaces; string "in"; return $ Oper In)
+          <|> try (do string "<="; return $ Oper Greater)
+          <|> try (do string ">="; return $ Oper Less)
+
 
 pAddOp :: Parser (Exp -> Exp -> Exp) -- Use chain1l for this
 pAddOp =
@@ -100,7 +80,7 @@ pAddOp =
 pMulOp :: Parser (Exp -> Exp -> Exp) -- Use chain1l for this
 pMulOp =
       do Oper Times <$ symbol '*'
-      <|> do Oper Div <$ string "//" -- ! Might need a try
+      <|> try (do string "//"; return $ Oper Div) 
       <|> do Oper Mod <$ symbol '%'
 
 -- ForClause
@@ -133,18 +113,18 @@ pIdent = lexeme $ try (do
     then return i
     else fail "variable can't be a reserved word")
 
-pNum :: Parser Int
+pNum :: Parser Exp
 pNum =
   lexeme $ do
     s <- numSign
     ds <- many1 digit
     case ds of
       [] -> fail ""
-      [d] -> return $ digitToInt d * s
+      [d] -> return $ Const (IntVal (digitToInt d * s))
       (d : ds') ->
         if d == '0'
           then fail "num constants cant start with 0"
-          else return $ read (d : ds') * s
+           else return $ Const (IntVal (read (d : ds') * s))
 
 pStr :: Parser String
 pStr = do
@@ -170,10 +150,14 @@ pStr = do
 pNoneTrueFalse :: Parser Value
 pNoneTrueFalse =
   lexeme $
-    try (do string "None"; return TrueVal)
+    try (do string "None"; return NoneVal)
       <|> try (do string "True"; return TrueVal)
-      <|> try (do string "False"; return TrueVal)
+      <|> try (do string "False"; return FalseVal)
 
+-- pNot :: Parser Value 
+-- pNot =
+--   lexeme $
+--     try ()
 
 -- Sub parsers
 
@@ -183,6 +167,16 @@ symbol s = lexeme $ do satisfy (s ==) <?> [s]; return ()
 lexeme :: Parser a -> Parser a
 lexeme p = do a <- p; spaces; return a
 
+isRel :: Parser ()
+isRel = lexeme $
+    do symbol '<'; return ()
+    <|> do symbol '>'; return ()
+    <|> try (do string "=="; return ())
+    <|> try (do string "in"; return ())
+    <|> try (do string "<="; return ())
+    <|> try (do string ">="; return ())
+    <|> try (do string "!="; return ())
+    <|> try (do string "not"; spaces; string "in"; return ())
 
 -- Helper functions
 
@@ -192,6 +186,7 @@ numSign =
     <|> return 1
 
 -- Satisfy helpers
+
 
 isIdentPrefixChar :: Char -> Bool
 isIdentPrefixChar c = isBoaAlpha c || c == '_'
