@@ -9,7 +9,7 @@ module BoaInterp
 
 import BoaAST
 import Control.Monad
-import Data.List (reverse, intercalate)
+import Data.List (intercalate)
 
 type Env = [(VName, Value)]
 

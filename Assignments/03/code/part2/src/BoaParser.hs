@@ -7,6 +7,7 @@ import BoaAST
 
 import Data.Char
 import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec.Combinator (notFollowedBy)
 
 parseString :: String -> Either ParseError Program
 parseString = parse (do spaces; a <- pProgram; eof; return a) ""
@@ -28,41 +29,32 @@ pStmt =
 
 pExp :: Parser Exp
 pExp =
-  lexeme $
+  lexeme $ 
     try (do e1 <- pExp'; ro <- pRelNegOp; Not . ro e1 <$> pExp';)
       <|> try (do e1 <- pExp'; ro <- pRelOp; ro e1 <$> pExp';)
       <|> pExp'
 
 pExp' :: Parser Exp
 pExp' =
-  do pOper
+  do pComments $ pOper
     <|> do pExp''
-
-pComments :: Parser ()
-pComments = do
-  spaces
-  symbol '#'
-  comment <- manyTill anyChar (char '\n')
-  return ()
-
-pComments' :: Parser a -> Parser a
-pComments' p = try (do a <- p; manyTill anyChar (char '\n'); return a)
-               <|> p
+    
+pComments :: Parser a -> Parser a
+pComments p = try (do spaces; symbol '#'; c <- manyTill anyChar (char '\n'); spaces; p)
+              <|> p
 
 pExp'' :: Parser Exp
-pExp'' = pComments' $
-     do symbol '['; e <- pExp; fc <- pForC; cz <- pCz; symbol ']'; return $ Compr e (fc : cz)
-  -- try (do pComments; pExp'')
-  --   <|> do symbol '['; e <- pExp; fc <- pForC; cz <- pCz; symbol ']'; return $ Compr e (fc : cz)
-    <|> try (do pNum)
-    <|> try (do Const . StringVal <$> pStr)
-    <|> try (do Const <$> pNoneTrueFalse)
+pExp'' = pComments $
+    do pNum
+    <|> do Const . StringVal <$> pStr
+    <|> do Const <$> pNoneTrueFalse
     <|> try (do i <- pIdent; symbol '('; ez <- pExpz; symbol ')'; return $ Call i ez)
-    <|> try (do Var <$> pIdent)
-    <|> do lexeme $ string "not"; Not <$> pExp
-    <|> try (do between (symbol '(') (symbol ')') pExp)
-    <|> try (do e <- between (symbol '[') (symbol ']') pExpz; return $ List e)
-
+    <|> try (do Var <$> pIdent) -- Lookahed (try) as reserved keywords will only be discovered after consuming chars
+    <|> try (do lexeme $ string "not"; Not <$> pExp)
+    <|> do between (symbol '(') (symbol ')') pExp
+    <|> try (do symbol '['; e <- pExp; fc <- pForC; cz <- pCz; symbol ']'; return $ Compr e (fc : cz))
+    <|> do e <- between (symbol '[') (symbol ']') pExpz; return $ List e
+    
 -- Precedence level low
 pOper :: Parser Exp
 pOper = pOper' `chainl1` pAddOp
@@ -74,22 +66,21 @@ pOper' = pExp'' `chainl1` pMulOp
 pRelOp :: Parser (Exp -> Exp -> Exp)
 pRelOp =
   lexeme $
-    try (do string "=="; return $ Oper Eq)
-      <|> try (do string "in"; return $ Oper In)
+    do try(string "=="); return $ Oper Eq
+      <|> do try(string "in"); return $ Oper In
       <|> do Oper Less <$ symbol '<'
       <|> do Oper Greater <$ symbol '>'
 
 pRelNegOp :: Parser (Exp -> Exp -> Exp)
 pRelNegOp =
   lexeme $
-    try (do string "!="; return $ Oper Eq)
-      <|> try (do string "not"; spaces; string "in"; return $ Oper In)
-      <|> try (do string "<="; return $ Oper Greater)
-      <|> try (do string ">="; return $ Oper Less)
+    do try(string "!="); return $ Oper Eq
+      <|> try(do string "not"; spaces; string "in"; return $ Oper In)
+      <|> do try(string "<="); return $ Oper Greater
+      <|> do try(string ">="); return $ Oper Less
 
 pAddOp :: Parser (Exp -> Exp -> Exp)
 pAddOp =
-  pComments' $
   lexeme $
   do Oper Plus <$ symbol '+'
     <|> do Oper Minus <$ symbol '-'
@@ -103,7 +94,7 @@ pMulOp =
 
 -- ForClause
 pForC :: Parser CClause
-pForC = lexeme $ try (do string "for"; spaces; i <- pIdent; try (string "in"); spaces; e <- pExp; return $ CCFor i e)
+pForC = lexeme $ do string "for"; spaces; i <- pIdent; string "in"; spaces; e <- pExp; return $ CCFor i e
 
 -- IfClause
 pIfC :: Parser CClause
@@ -126,25 +117,27 @@ pExps = lexeme $ do pExp `sepBy1` symbol ','
 
 pIdent :: Parser String
 pIdent =
-  lexeme $
-    try
-      ( do
-          c <- satisfy isIdentPrefixChar
-          cs <- many (satisfy isIdentChar)
-          let i = c : cs
-          if i `notElem` reservedIdents
-            then return i
-            else fail "variable can't be a reserved word"
-      )
+  lexeme $ do
+      c <- satisfy isIdentPrefixChar
+      cs <- many (satisfy isIdentChar)
+      let i = c : cs
+      if i `notElem` reservedIdents
+        then return i
+        else fail "variable can't be a reserved word"
+        
+numSign :: Parser Int
+numSign =
+  try (do string "-"; return (-1))
+  <|> return 1
 
 pNum :: Parser Exp
-pNum = pComments' $
+pNum = 
   lexeme $ do
     s <- numSign
     ds <- many1 digit
     case ds of
       [] -> fail ""
-      [d] -> return $ Const (IntVal (digitToInt d * s))
+      [d] -> return $ Const (IntVal (read [d] * s))
       (d : ds') ->
         if d == '0'
           then fail "num constants cant start with 0"
@@ -158,17 +151,14 @@ pStr = do
   return a
   where
     escaped =
-      try (do string "\\\\"; return ['\\'])
-        <|> try (do string "\\\'"; return ['\''])
-        <|> try (do string "\\\n"; return [])
-        <|> try (do string "\n"; return ['\n'])
-        <|> try
-          ( do
-              x <- noneOf ['\'', '\\']
+        try (do string "\\\\"; return "'\\'")
+        <|> try (do string "\\\'"; return "\'")
+        <|> try (do string "\\\n"; return "'\n'")
+        <|> do
+              x <- noneOf ['\'', '\\', '\n']
               if isStrChar x
                 then return [x]
                 else fail "string may only hold ASCII printable charecters"
-          )
 
 pNoneTrueFalse :: Parser Value
 pNoneTrueFalse =
@@ -196,13 +186,6 @@ isRel =
       <|> try (do string ">="; return ())
       <|> try (do string "!="; return ())
       <|> try (do string "not"; spaces; string "in"; return ())
-
--- Helper functions
-
-numSign :: Parser Int
-numSign =
-  do symbol '-'; return (-1)
-    <|> return 1
 
 -- Satisfy helpers
 
