@@ -37,6 +37,7 @@ strTest = testGroup "pStr tests"
   , testCase "'a\\\nb'" $ parseString "'a\\\nb'" @?= Right [SExp (Const (StringVal "ab"))]  
   , testCase "x='Hello World!'" $ parseString "x='Hello World!'" @?= Right [SDef "x" (Const (StringVal "Hello World!"))]
   ]
+  -- 'fo\\\\o\\\n\\n
 
 noneTrueFalseTest = testGroup "pNoneTrueFalseTest"
   [ testCase "x=None" $ parseString "x=None" @?= Right [SDef "x" (Const NoneVal)]
@@ -107,3 +108,16 @@ minimalTests = testGroup "Minimal tests" [
     case parseString "wow!" of
       Left e -> return ()  -- any message is OK
       Right p -> assertFailure $ "Unexpected parse: " ++ show p]
+
+
+-- "'\n'"
+--  "'\t'"
+--  "#\n1#\n"
+-- "x#foo"
+-- "#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \nx#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n"
+-- "x in3" should fail
+--  "x notin y" should fail
+-- "[x fory in z]" should fail
+-- "[x for y inz]" should fail
+-- "[x for y in z ifu]" should fail
+--  "x*not y" should fail
