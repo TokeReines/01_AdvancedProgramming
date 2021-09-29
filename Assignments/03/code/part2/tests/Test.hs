@@ -105,7 +105,7 @@ minimalTests = testGroup "Minimal tests" [
       
   testCase "Big program" $
     parseString "x = [y*2 for y in range(1,10,2) if y > 5] # Some comment\n" @?=
-      Right [SExp (Oper Plus (Const (IntVal 2)) (Var "two"))],
+      Right [SDef "x" (Compr (Oper Times (Var "y") (Const (IntVal 2))) [CCFor "y" (Call "range" [Const (IntVal 1),Const (IntVal 10),Const (IntVal 2)]),CCIf (Oper Greater (Var "y") (Const (IntVal 5)))])],
   testCase "simple failure" $
     -- avoid "expecting" very specific parse-error messages
     case parseString "wow!" of
