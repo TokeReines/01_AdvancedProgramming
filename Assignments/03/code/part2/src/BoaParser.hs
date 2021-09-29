@@ -28,33 +28,25 @@ pStmt =
 
 pExp :: Parser Exp
 pExp =
-  lexeme $ pComments $
-      try (do e1 <- pExp'; spaces; ro <- pRelNegOp; spaces; Not . ro e1 <$> pExp';)
-      <|> try (do e1 <- pExp'; spaces; ro <- pRelOp; spaces; ro e1 <$> pExp';)
-      <|> pExp'
+  lexeme $
+    pComments $
+      try (do e1 <- pExp'; spaces; ro <- pRelNegOp; spaces; Not . ro e1 <$> pExp')
+        <|> try (do e1 <- pExp'; spaces; ro <- pRelOp; spaces; ro e1 <$> pExp')
+        <|> pExp'
 
 pExp' :: Parser Exp
 pExp' =
   do pOper
     <|> do pExp''
 
-pComments' :: Parser ()
-pComments' = try (do spaces; symbol' '#'; c <- manyTill (satisfy isAscii) (char '\n'); return ();)
-             <|> try (do spaces; symbol' '#'; c <- manyTill (satisfy isAscii) eof; return ();)
-
-
-pComments :: Parser a -> Parser a
-pComments p = do skipMany pComments'; a <- p; skipMany pComments'; return a
-
 pExp'' :: Parser Exp
 pExp'' =
-    do pNum
+  do pNum
     <|> do Const . StringVal <$> pStr
     <|> do Const <$> pNoneTrueFalse
     <|> try (do i <- pIdent; spaces; ez <- between (symbol '(') (symbol ')') pExpz; return $ Call i ez)
-    <|> try (do Var <$> pIdent) -- Lookahed (try) as reserved keywords will only be discovered after consuming chars
+    <|> try (do Var <$> pIdent)
     <|> try (do string "not"; spaces; Not <$> pExp)
-    -- <|> do symbol '('; e <-pExp; symbol ')';  pExp
     <|> do between (symbol '(') (symbol ')') pExp
     <|> try (do symbol '['; e <- pExp; spaces; fc <- pForC; spaces; cz <- pCz; symbol ']'; return $ Compr e (fc : cz))
     <|> do e <- between (symbol '[') (symbol ']') pExpz; return $ List e
@@ -67,38 +59,9 @@ pOper = pOper' `chainl1` pAddOp
 pOper' :: Parser Exp
 pOper' = pExp'' `chainl1` pMulOp
 
-pRelOp :: Parser (Exp -> Exp -> Exp)
-pRelOp =
-  lexeme $
-    do try(string "=="); return $ Oper Eq
-      <|> do try(string "in"); notFollowedBy (satisfy isBoaAlphaNum); return $ Oper In
-      <|> do Oper Less <$ symbol '<'
-      <|> do Oper Greater <$ symbol '>'
-
-pRelNegOp :: Parser (Exp -> Exp -> Exp)
-pRelNegOp =
-  lexeme $
-    do try(string "!="); return $ Oper Eq
-      <|> try (do string "not"; many1 $ satisfy isSpace; string "in"; return $ Oper In)
-      <|> do try(string "<="); return $ Oper Greater
-      <|> do try(string ">="); return $ Oper Less
-
-pAddOp :: Parser (Exp -> Exp -> Exp)
-pAddOp =
-  lexeme $
-  do symbol '+'; notFollowedBy isRel; return $ Oper Plus
-    <|> do symbol '-';  notFollowedBy isRel; return $ Oper Minus
-
-pMulOp :: Parser (Exp -> Exp -> Exp)
-pMulOp =
-  lexeme $
-  do symbol '*'; notFollowedBy isRel; return $ Oper Times;
-    <|> try (do string "//"; notFollowedBy isRel; return $ Oper Div)
-    <|> do symbol '%'; notFollowedBy isRel; return $ Oper Mod
-
 -- ForClause
 pForC :: Parser CClause
-pForC = lexeme $ do try (string "for"); notFollowedBy (satisfy isBoaAlphaNum); spaces; i <- pIdent; spaces; string "in"; notFollowedBy (satisfy isBoaAlphaNum); spaces; CCFor i <$> pExp;
+pForC = lexeme $ do try (string "for"); notFollowedBy (satisfy isBoaAlphaNum); spaces; i <- pIdent; spaces; string "in"; notFollowedBy (satisfy isBoaAlphaNum); spaces; CCFor i <$> pExp
 
 -- IfClause
 pIfC :: Parser CClause
@@ -122,20 +85,17 @@ pExps = lexeme $ do pExp `sepBy1` symbol ','
 pIdent :: Parser String
 pIdent =
   do
-      c <- satisfy isIdentPrefixChar
-      cs <- many (satisfy isIdentChar)
-      let i = c : cs
-      if i `notElem` reservedIdents
-        then return i
-        else fail "variable can't be a reserved word"
+    c <- satisfy isIdentPrefixChar
+    cs <- many (satisfy isIdentChar)
+    let i = c : cs
+    if i `notElem` reservedIdents
+      then return i
+      else fail "variable can't be a reserved word"
 
 numSign :: Parser Int
 numSign =
-  do satisfy (=='-'); return (-1)
-  <|> return 1
-
-myIsSpace :: Parser ()
-myIsSpace = do satisfy (==' '); return ()
+  do satisfy (== '-'); return (-1)
+    <|> return 1
 
 pNum :: Parser Exp
 pNum =
@@ -152,25 +112,26 @@ pNum =
 
 pStr :: Parser String
 pStr =
-  try (do symbol' '\'';symbol '\''; return [] )
-  <|>
-   try (do
-  symbol' '\''
-  a <- concat <$> many1 escaped
-  if null a
-    then do symbol' '\''; fail "string may only hold ASCII printable charecters"
-    else do symbol' '\''; return a)
+  try (do symbol' '\''; symbol '\''; return []) -- Checks for the empty string
+    <|> try
+      ( do
+          symbol' '\''
+          a <- concat <$> many1 escaped -- many1 makes sure to not return [] one chars such as \n \t
+          if null a
+            then do symbol' '\''; fail "string may only hold ASCII printable charecters"
+            else do symbol' '\''; return a
+      )
   where
     escaped =
-        try (do string "\\\\"; return "\\")   -- "'a\\\n b\\n\\\nc\\\n\\nd'"
-        <|> try (do string "\\\'"; return "\'") -- [SExp (Const (StringVal "a b\nc\nd"))]
+      try (do string "\\\\"; return "\\") 
+        <|> try (do string "\\\'"; return "\'")
         <|> try (do string "\\\n"; return "")
         <|> try (do string "\\n"; return "\n")
         <|> do
-              x <- noneOf ['\'', '\\', '\n']
-              if isStrChar x
-                then return [x]
-                else fail "string may only hold ASCII printable charecters"
+          x <- noneOf ['\'', '\\', '\n']
+          if isStrChar x
+            then return [x]
+            else fail "string may only hold ASCII printable charecters"
 
 pNoneTrueFalse :: Parser Value
 pNoneTrueFalse =
@@ -189,6 +150,43 @@ symbol' s = do satisfy (s ==); return ()
 
 lexeme :: Parser a -> Parser a
 lexeme p = do a <- p; spaces; return a
+
+pComments' :: Parser ()
+pComments' =
+  try (do spaces; symbol' '#'; c <- manyTill (satisfy isAscii) (char '\n'); return ())
+    <|> try (do spaces; symbol' '#'; c <- manyTill (satisfy isAscii) eof; return ()) -- ! Try could properly be removed
+
+pComments :: Parser a -> Parser a
+pComments p = do skipMany pComments'; a <- p; skipMany pComments'; return a
+
+pRelOp :: Parser (Exp -> Exp -> Exp)
+pRelOp =
+  lexeme $
+    do try (string "=="); return $ Oper Eq
+      <|> do try (string "in"); notFollowedBy (satisfy isBoaAlphaNum); return $ Oper In
+      <|> do Oper Less <$ symbol '<'
+      <|> do Oper Greater <$ symbol '>'
+
+pRelNegOp :: Parser (Exp -> Exp -> Exp)
+pRelNegOp =
+  lexeme $
+    do try (string "!="); return $ Oper Eq
+      <|> try (do string "not"; many1 $ satisfy isSpace; string "in"; return $ Oper In)
+      <|> do try (string "<="); return $ Oper Greater
+      <|> do try (string ">="); return $ Oper Less
+
+pAddOp :: Parser (Exp -> Exp -> Exp)
+pAddOp =
+  lexeme $
+    do symbol '+'; notFollowedBy isRel; return $ Oper Plus
+      <|> do symbol '-'; notFollowedBy isRel; return $ Oper Minus
+
+pMulOp :: Parser (Exp -> Exp -> Exp)
+pMulOp =
+  lexeme $
+    do symbol '*'; notFollowedBy isRel; return $ Oper Times
+      <|> try (do string "//"; notFollowedBy isRel; return $ Oper Div)
+      <|> do symbol '%'; notFollowedBy isRel; return $ Oper Mod
 
 isRel :: Parser ()
 isRel =
@@ -214,6 +212,7 @@ isIdentChar c = isBoaAlphaNum c || c == '_'
 isBoaAlpha :: Char -> Bool
 isBoaAlpha c =
   let c' = ord c
+   -- ord c [65,...,90] = [A-Z], ord c [97,..,122] = [a,..,z]
    in (c' >= 65 && c' <= 90) || (c' >= 97 && c' <= 122)
 
 isBoaAlphaNum :: Char -> Bool
