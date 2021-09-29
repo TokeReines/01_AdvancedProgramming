@@ -70,7 +70,7 @@ pRelOp :: Parser (Exp -> Exp -> Exp)
 pRelOp =
   lexeme $
     do try(string "=="); return $ Oper Eq
-      <|> do try(string "in"); return $ Oper In
+      <|> do try(string "in"); notFollowedBy (satisfy isBoaAlphaNum); return $ Oper In
       <|> do Oper Less <$ symbol '<'
       <|> do Oper Greater <$ symbol '>'
 
@@ -97,11 +97,11 @@ pMulOp =
 
 -- ForClause
 pForC :: Parser CClause
-pForC = lexeme $ do try(string "for"); spaces; i <- pIdent;  many1 $ satisfy isSpace; string "in";  many1 $ string " "; e <- pExp'; return $ CCFor i e
+pForC = lexeme $ do try (string "for"); notFollowedBy (satisfy isBoaAlphaNum); spaces; i <- pIdent; spaces; string "in"; notFollowedBy (satisfy isBoaAlphaNum); spaces; e <- pExp; return $ CCFor i e
 
 -- IfClause
 pIfC :: Parser CClause
-pIfC = lexeme $ do try (string "if"); spaces; CCIf <$> pExp
+pIfC = lexeme $ do try (string "if"); notFollowedBy (satisfy isBoaAlphaNum); spaces; CCIf <$> pExp
 
 -- Clausez
 pCz :: Parser [CClause]
