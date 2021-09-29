@@ -23,7 +23,7 @@ pStmts =
 
 pStmt :: Parser Stmt
 pStmt =
-  try (do i <- pIdent; symbol '='; SDef i <$> pExp)
+  try (do i <- pIdent; spaces; symbol '='; SDef i <$> pExp)
     <|> do SExp <$> pExp
 
 pExp :: Parser Exp
@@ -50,7 +50,7 @@ pExp'' =
     do pNum
     <|> do Const . StringVal <$> pStr
     <|> do Const <$> pNoneTrueFalse
-    <|> try (do i <- pIdent; ez <- between (symbol '(') (symbol ')') pExpz; return $ Call i ez)
+    <|> try (do i <- pIdent; spaces; ez <- between (symbol '(') (symbol ')') pExpz; return $ Call i ez)
     <|> try (do Var <$> pIdent) -- Lookahed (try) as reserved keywords will only be discovered after consuming chars
     <|> try (do string "not"; spaces; Not <$> pExp)
     <|> do between (symbol '(') (symbol ')') pExp
@@ -77,7 +77,7 @@ pRelNegOp :: Parser (Exp -> Exp -> Exp)
 pRelNegOp =
   lexeme $
     do try(string "!="); return $ Oper Eq
-      <|> try (do string "not"; many1 $ string " "; string "in"; return $ Oper In)
+      <|> try (do string "not"; many1 $ satisfy isSpace; string "in"; return $ Oper In)
       <|> do try(string "<="); return $ Oper Greater
       <|> do try(string ">="); return $ Oper Less
 
@@ -149,11 +149,15 @@ pNum =
           else return $ Const (IntVal (read (d : ds') * s))
 
 pStr :: Parser String
-pStr = do
-  symbol '\''
-  a <- concat <$> many escaped
-  symbol '\''
-  return a
+pStr =
+  try (do symbol' '\'';symbol '\''; return [] )
+  <|>
+   try (do
+  symbol' '\''
+  a <- concat <$> many1 escaped
+  if null a
+    then do symbol' '\''; fail "string may only hold ASCII printable charecters"
+    else do symbol' '\''; return a)
   where
     escaped =
         try (do string "\\\\"; return "\\")   -- "'a\\\n b\\n\\\nc\\\n\\nd'"
@@ -177,6 +181,9 @@ pNoneTrueFalse =
 
 symbol :: Char -> Parser ()
 symbol s = lexeme $ do satisfy (s ==); return ()
+
+symbol' :: Char -> Parser ()
+symbol' s = do satisfy (s ==); return ()
 
 lexeme :: Parser a -> Parser a
 lexeme p = do a <- p; spaces; return a

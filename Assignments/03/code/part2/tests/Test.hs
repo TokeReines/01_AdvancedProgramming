@@ -32,8 +32,11 @@ numTests = testGroup "pNum tests"
 strTest = testGroup "pStr tests"
   [ testCase "'a\\\n b\\n\\\nc\\\n\\nd'" $ parseString "'a\\\n b\\n\\\nc\\\n\\nd'" @?= Right [SExp (Const (StringVal "a b\nc\nd"))]
   , testCase "* '\\t'" $ assertFailure' $ parseString "'\\t'"
+  , testCase "* '\n'" $ assertFailure' $ parseString "'\n'"
+  , testCase "* '\t'" $ assertFailure' $ parseString "'\t'"
+  , testCase "''" $ parseString "''" @?= Right [SExp (Const (StringVal ""))]
   , testCase "'\\\\'" $ parseString "'\\\\'" @?= Right [SExp (Const (StringVal "\\"))]  
-  , testCase "'a\nb'" $ parseString "'a\nb'" @?= Right [SExp (Const (StringVal "a\nb"))]  
+  , testCase "* 'a\nb'" $ assertFailure' $ parseString "'a\nb'"
   , testCase "'a\\\nb'" $ parseString "'a\\\nb'" @?= Right [SExp (Const (StringVal "ab"))]  
   , testCase "x='Hello World!'" $ parseString "x='Hello World!'" @?= Right [SDef "x" (Const (StringVal "Hello World!"))]
   ]

@@ -88,7 +88,7 @@ stringifyValue v
   | (IntVal i) <- v = show i
   | (StringVal s) <- v = s
   | (ListVal []) <- v = "[]"
-  | l@(ListVal vs) <- v = stringifyValues [l]
+  | l@(ListVal _) <- v = stringifyValues [l]
 
 stringifyValues :: [Value] -> String
 stringifyValues [] = ""
