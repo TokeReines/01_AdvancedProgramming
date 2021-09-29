@@ -123,7 +123,7 @@ pStr =
       )
   where
     escaped =
-      try (do string "\\\\"; return "\\") 
+      try (do string "\\\\"; return "\\")
         <|> try (do string "\\\'"; return "\'")
         <|> try (do string "\\\n"; return "")
         <|> try (do string "\\n"; return "\n")
@@ -211,9 +211,9 @@ isIdentChar c = isBoaAlphaNum c || c == '_'
 
 isBoaAlpha :: Char -> Bool
 isBoaAlpha c =
-  let c' = ord c
-   -- ord c [65,...,90] = [A-Z], ord c [97,..,122] = [a,..,z]
-   in (c' >= 65 && c' <= 90) || (c' >= 97 && c' <= 122)
+  let c' = ord c in 
+      -- ord c [65,...,90] = [A-Z], ord c [97,..,122] = [a,..,z]
+      (c' >= 65 && c' <= 90) || (c' >= 97 && c' <= 122)
 
 isBoaAlphaNum :: Char -> Bool
 isBoaAlphaNum c = isDigit c || isBoaAlpha c

@@ -10,11 +10,19 @@ main :: IO ()
 main = defaultMain $ localOption (mkTimeout 1000000) tests
 
 tests :: TestTree
-tests = testGroup "Tests" [numTests, strTest, identTest, minimalTests, exprOperExprTest, notTest]
+tests = testGroup "Tests" [stmtsTests, numTests, strTest, identTest, noneTrueFalseTest,  exprOperExprTest, notTest, parenthesisTest, identPExprzPTest, sqBrackTest, forClauseTest, commentsTest ,minimalTests]
 
 assertFailure' a = case a of 
   Left e -> return ()
   Right p -> assertFailure $ "Unexpected parse: " ++ show p
+
+stmtsTests = testGroup "stmts tests"
+  [ testCase "1" $ parseString "1" @?= Right [SExp (Const (IntVal 1))]
+  , testCase "x=1" $ parseString "x=1" @?= Right [SDef "x" (Const (IntVal 1))]
+  , testCase "1;1" $ parseString "1;1" @?= Right [SExp (Const (IntVal 1)), SExp (Const (IntVal 1))]
+  , testCase "1;x=1" $ parseString "1;x=1" @?= Right [SExp (Const (IntVal 1)),SDef "x" (Const (IntVal 1))]
+  , testCase "* 1;x=1;" $ assertFailure' $ parseString "1;x=1;"
+  ]
 
 numTests = testGroup "pNum tests"
   [ testCase "1" $ parseString "1" @?= Right [SExp (Const (IntVal 1))]
@@ -26,7 +34,7 @@ numTests = testGroup "pNum tests"
   , testCase "* 007" $  assertFailure' $ parseString "007"  
   , testCase "* +7" $ assertFailure' $ parseString "+7"
   , testCase "* --7" $ assertFailure' $ parseString "--7"
-  , testCase "   -1" $ parseString "   -1" @?= Right [SExp (Const (IntVal (-1)))]
+  , testCase "   -1    " $ parseString "   -1" @?= Right [SExp (Const (IntVal (-1)))]
   ]
 
 strTest = testGroup "pStr tests"
@@ -35,22 +43,11 @@ strTest = testGroup "pStr tests"
   , testCase "* '\n'" $ assertFailure' $ parseString "'\n'"
   , testCase "* '\t'" $ assertFailure' $ parseString "'\t'"
   , testCase "''" $ parseString "''" @?= Right [SExp (Const (StringVal ""))]
+  , testCase "\t\n'Hello World'\t\n" $ parseString "\t\n'Hello World'\t\n" @?= Right [SExp (Const (StringVal "Hello World"))]
   , testCase "'\\\\'" $ parseString "'\\\\'" @?= Right [SExp (Const (StringVal "\\"))]  
   , testCase "* 'a\nb'" $ assertFailure' $ parseString "'a\nb'"
   , testCase "'a\\\nb'" $ parseString "'a\\\nb'" @?= Right [SExp (Const (StringVal "ab"))]  
   , testCase "x='Hello World!'" $ parseString "x='Hello World!'" @?= Right [SDef "x" (Const (StringVal "Hello World!"))]
-  ]
-  -- 'fo\\\\o\\\n\\n
-
-noneTrueFalseTest = testGroup "pNoneTrueFalseTest"
-  [ testCase "x=None" $ parseString "x=None" @?= Right [SDef "x" (Const NoneVal)]
-  , testCase "x=True" $ parseString "x=True" @?= Right [SDef "x" (Const TrueVal)]
-  , testCase "x=False" $ parseString "x=False" @?= Right [SDef "x" (Const FalseVal)]
-  , testCase "  \t\nx  \t\n=  \t\nFalse  \t\n" $ parseString "  \t\nx  \t\n=  \t\nFalse  \t\n" @?= Right [SDef "x" (Const FalseVal)]
-  , testCase "* x=none" $ assertFailure' $ parseString "x=none"
-  , testCase "* x=true" $ assertFailure' $ parseString "x=true"
-  , testCase "* x=false" $ assertFailure' $ parseString "x=false"
-
   ]
 
 identTest = testGroup "pIdent tests"
@@ -67,6 +64,13 @@ identTest = testGroup "pIdent tests"
   , testCase "* if=2" $ assertFailure' $  parseString "if=2"
   , testCase "* in=2" $ assertFailure' $  parseString "in=2"
   , testCase "* not=2" $ assertFailure' $  parseString "not=2"
+  ]
+
+noneTrueFalseTest = testGroup "pNoneTrueFalseTest"
+  [ testCase "x=None" $ parseString "x=None" @?= Right [SDef "x" (Const NoneVal)]
+  , testCase "x=True" $ parseString "x=True" @?= Right [SDef "x" (Const TrueVal)]
+  , testCase "x=False" $ parseString "x=False" @?= Right [SDef "x" (Const FalseVal)]
+  , testCase "  \t\nx  \t\n=  \t\nFalse  \t\n" $ parseString "  \t\nx  \t\n=  \t\nFalse  \t\n" @?= Right [SDef "x" (Const FalseVal)]
   ]
 
 exprOperExprTest = testGroup "Expr Oper Expr"
@@ -91,11 +95,68 @@ exprOperExprTest = testGroup "Expr Oper Expr"
   -- Test precedende level of operators and associativity (1+((2*3)/4))
   , testCase "1+2*3//4" $ parseString "1+2*3//4" @?= Right [SExp (Oper Plus (Const (IntVal 1)) (Oper Div (Oper Times (Const (IntVal 2)) (Const (IntVal 3))) (Const (IntVal 4))))]
   -- Test lt/gt
+  , testCase  "2+2<1+1" $ parseString "2+2<1+1" @?= Right [SExp (Oper Less (Oper Plus (Const (IntVal 2)) (Const (IntVal 2))) (Oper Plus (Const (IntVal 1)) (Const (IntVal 1))))]
+  , testCase "1+not 1" $ assertFailure' $ parseString "1+not 1"
   ]
 
 notTest = testGroup "not Expr"
   [ testCase "not True" $ parseString "not True" @?= Right [SExp (Not (Const TrueVal))]
   , testCase "not 1" $ parseString "not 1" @?= Right [SExp (Not (Const (IntVal 1)))]
+  , testCase "not not 1" $ parseString "not not 1" @?= Right [SExp (Not (Not (Const (IntVal 1))))]
+  ]
+
+parenthesisTest = testGroup "parenthesis Test" 
+  [ testCase "(1)" $ parseString "(1)" @?= Right [SExp (Const (IntVal 1))]
+  , testCase "(  \n  \t 1  \n \t  )" $ parseString "(  \n  \t 1  \n \t  )" @?= Right [SExp (Const (IntVal 1))]
+  , testCase "('Hello World')" $ parseString "('Hello World')" @?= Right [SExp (Const (StringVal "Hello World"))]
+  , testCase "(_1hello_world_)" $ parseString "(_1hello_world_)" @?= Right [SExp (Var "_1hello_world_")]
+  , testCase "(None)" $ parseString "(None)" @?= Right [SExp (Const NoneVal)]
+  , testCase "(True)" $ parseString "(True)" @?= Right [SExp (Const TrueVal)]
+  , testCase "(False)" $ parseString "(False)" @?= Right [SExp (Const FalseVal)]
+  , testCase "(not False)" $ parseString "(not False)" @?= Right [SExp (Not (Const FalseVal))]
+  , testCase "((1))" $ parseString "((1))" @?= Right [SExp (Const (IntVal 1))]
+  , testCase "(1+1)" $ parseString "(1+1)" @?= Right [SExp (Oper Plus (Const (IntVal 1)) (Const (IntVal 1)))]
+  , testCase "(1<1)" $ parseString "(1<1)" @?= Right [SExp (Oper Less (Const (IntVal 1)) (Const (IntVal 1)))]
+  , testCase "(((1)))" $ parseString "(((1)))" @?= Right [SExp (Const (IntVal 1))]
+  , testCase "(range(10,2,3))" $ parseString "(range(10,2,3))" @?= Right [SExp (Call "range" [Const (IntVal 10),Const (IntVal 2),Const (IntVal 3)])]
+  , testCase "([1,x,[1,2],'Hello World!'])" $ parseString "([1,x,[1,2],'Hello World!'])" @?= Right [SExp (List [Const (IntVal 1),Var "x",List [Const (IntVal 1),Const (IntVal 2)],Const (StringVal "Hello World!")])]
+  , testCase "([x for x in z if b < y])" $ parseString "([x for x in z if b < y])" @?= Right [SExp (Compr (Var "x") [CCFor "x" (Var "z"),CCIf (Oper Less (Var "b") (Var "y"))])]
+  ]
+
+identPExprzPTest = testGroup "ident Paren Exprz Paren Test"
+  [ testCase "range(1,2,3)" $ parseString "range(1,2,3)" @?= Right [SExp (Call "range" [Const (IntVal 1),Const (IntVal 2),Const (IntVal 3)])]
+  , testCase "print(1,2,3)" $ parseString "print(1,2,3)" @?= Right [SExp (Call "print" [Const (IntVal 1),Const (IntVal 2),Const (IntVal 3)])]
+  , testCase "print()" $ parseString "print()" @?= Right [SExp (Call "print" [])]
+  , testCase "print \n \t (1,2,3)" $ parseString "print \n \t (1,2,3)" @?= Right [SExp (Call "print" [Const (IntVal 1),Const (IntVal 2),Const (IntVal 3)])]
+  , testCase "True(1,2,3)" $ assertFailure' $ parseString "True(1,2,3)" -- reserved keyword
+  ]
+
+sqBrackTest = testGroup "Square Bracket Tests"
+  [ testCase "[1,2,3]" $ parseString "[1,2,3]" @?= Right [SExp (List [Const (IntVal 1),Const (IntVal 2),Const (IntVal 3)])]
+  , testCase "[1,2,'3']" $ parseString "[1,2,'3']" @?= Right [SExp (List [Const (IntVal 1),Const (IntVal 2),Const (StringVal "3")])]
+  , testCase "[1]" $ parseString "[1]" @?= Right [SExp (List [Const (IntVal 1)])]
+  , testCase "[]" $ parseString "[]" @?= Right [SExp (List [])]
+  , testCase "[1,True,False,None,'Hello',[], [1,2]]" $ parseString "[1,True,False,None,'Hello',[], [1,2]]" @?= Right [SExp (List [Const (IntVal 1),Const TrueVal,Const FalseVal,Const NoneVal,Const (StringVal "Hello"),List [],List [Const (IntVal 1),Const (IntVal 2)]])]
+  ]
+
+forClauseTest = testGroup "For Clause Test"
+  [ testCase "[x for y in z if u > 2]" $ parseString "[x for y in z if u > 2]" @?= Right [SExp (Compr (Var "x") [CCFor "y" (Var "z"),CCIf (Oper Greater (Var "u") (Const (IntVal 2)))])]
+  , testCase "[x\nfor\ty\tin\tz\tif\tu\t>\t2]" $ parseString "[x\nfor\ty\tin\tz\tif\tu\t>\t2]" @?= Right [SExp (Compr (Var "x") [CCFor "y" (Var "z"),CCIf (Oper Greater (Var "u") (Const (IntVal 2)))])]
+  , testCase "[xfor y in z if u > 2]" $ assertFailure' $ parseString "[xfor y in z if u > 2]"
+  , testCase "[x fory in z if u > 2]" $ assertFailure' $ parseString "[x fory in z if u > 2]"
+  , testCase "[x for yin z if u > 2]" $ assertFailure' $ parseString "[x for yin z if u > 2]"
+  , testCase "[x for y inz if u > 2]" $ assertFailure' $ parseString "[x for y inz if u > 2]"
+  , testCase "[x for y in zif u > 2]" $ assertFailure' $ parseString "[x for y in zif u > 2]"
+  , testCase "[x for y in z ifu > 2]" $ assertFailure' $ parseString "[x for y in z ifu > 2]"    
+  , testCase "[(x)for(y)in(z)if(u)]" $ assertFailure' $ parseString "[(x)for(y)in(z)if(u)]"
+  ]
+
+commentsTest = testGroup "Comments test" 
+  [ testCase "#Hello\tWorld!\nx" $ parseString "#Hello\tWorld!\nx" @?= Right [SExp (Var "x")]
+  , testCase "#\nx" $ parseString "#\nx" @?= Right [SExp (Var "x")]
+  , testCase "x #  \n" $ parseString "x #  \n" @?= Right [SExp (Var "x")]
+  , testCase "#  \n#  \n#  \nx#  \n#  \n#  \n" $ parseString "#  \n#  \n#  \nx#  \n#  \n#  \n" @?= Right [SExp (Var "x")]
+  , testCase "#  \n#  \n#  \nx#  \n#  \n#hej  " $ parseString "#  \n#  \n#  \nx#  \n#  \n#hej" @?= Right [SExp (Var "x")]
   ]
 
 minimalTests = testGroup "Minimal tests" [
@@ -111,32 +172,3 @@ minimalTests = testGroup "Minimal tests" [
     case parseString "wow!" of
       Left e -> return ()  -- any message is OK
       Right p -> assertFailure $ "Unexpected parse: " ++ show p]
-
-
--- Parsing: "[(x)not\tin(not(y)),[(x)for\ty\tin[z]if(u)]]"
--- expected: Right [SExp (List [Not (Oper In (Var "x") (Not (Var "y"))),Compr (Var "x") [CCFor "y" (List [Var "z"]),CCIf (Var "u")]])]
-
--- Parsing: "#\n1#\n"
--- expected: Right [SExp (Const (IntVal 1))]
-
--- Parsing: "x#foo"
--- expected: Right [SExp (Var "x")]
-
--- Parsing: "#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \nx#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n"
--- expected: Right [SExp (Var "x")]
-
--- Parsing: "x in3"
--- expected: Left "<message>"
-
--- Parsing: "[x fory in z]"
--- expected: Left "<message>"
-
--- Parsing: "[x for y in z ifu]"
--- expected: Left "<message>"
-
--- Parsing: "[x for y in z in u]"
--- expected: Right [SExp (Compr (Var "x") [CCFor "y" (Oper In (Var "z") (Var "u"))])]
-
--- Parsing: "x*not y"
--- expected: Left "<message>"
-         
