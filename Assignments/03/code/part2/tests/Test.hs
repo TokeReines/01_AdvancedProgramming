@@ -104,7 +104,7 @@ minimalTests = testGroup "Minimal tests" [
       Right [SExp (Oper Plus (Const (IntVal 2)) (Var "two"))],
       
   testCase "Big program" $
-    parseString "x = (2, [y*2 for y in range(1,10,2) if y > 5]) # Some comment" @?=
+    parseString "x = [y*2 for y in range(1,10,2) if y > 5] # Some comment\n" @?=
       Right [SExp (Oper Plus (Const (IntVal 2)) (Var "two"))],
   testCase "simple failure" $
     -- avoid "expecting" very specific parse-error messages
@@ -113,14 +113,30 @@ minimalTests = testGroup "Minimal tests" [
       Right p -> assertFailure $ "Unexpected parse: " ++ show p]
 
 
--- "'\n'"
---  "'\t'"
---  "#\n1#\n"
--- "x#foo"
--- "#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \nx#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n"
--- "x in3" should fail
---  "x notin y" should fail
--- "[x fory in z]" should fail
--- "[x for y inz]" should fail
--- "[x for y in z ifu]" should fail
---  "x*not y" should fail
+-- Parsing: "[(x)not\tin(not(y)),[(x)for\ty\tin[z]if(u)]]"
+-- expected: Right [SExp (List [Not (Oper In (Var "x") (Not (Var "y"))),Compr (Var "x") [CCFor "y" (List [Var "z"]),CCIf (Var "u")]])]
+
+-- Parsing: "#\n1#\n"
+-- expected: Right [SExp (Const (IntVal 1))]
+
+-- Parsing: "x#foo"
+-- expected: Right [SExp (Var "x")]
+
+-- Parsing: "#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \nx#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n#  \n"
+-- expected: Right [SExp (Var "x")]
+
+-- Parsing: "x in3"
+-- expected: Left "<message>"
+
+-- Parsing: "[x fory in z]"
+-- expected: Left "<message>"
+
+-- Parsing: "[x for y in z ifu]"
+-- expected: Left "<message>"
+
+-- Parsing: "[x for y in z in u]"
+-- expected: Right [SExp (Compr (Var "x") [CCFor "y" (Oper In (Var "z") (Var "u"))])]
+
+-- Parsing: "x*not y"
+-- expected: Left "<message>"
+         

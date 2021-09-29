@@ -29,8 +29,8 @@ pStmt =
 pExp :: Parser Exp
 pExp =
   lexeme $ pComments $
-      try (do e1 <- pExp'; ro <- pRelNegOp; Not . ro e1 <$> pExp';)
-      <|> try (do e1 <- pExp'; ro <- pRelOp; ro e1 <$> pExp';)
+      try (do e1 <- pExp'; spaces; ro <- pRelNegOp; spaces; Not . ro e1 <$> pExp';)
+      <|> try (do e1 <- pExp'; spaces; ro <- pRelOp; spaces; ro e1 <$> pExp';)
       <|> pExp'
 
 pExp' :: Parser Exp
@@ -53,6 +53,7 @@ pExp'' =
     <|> try (do i <- pIdent; spaces; ez <- between (symbol '(') (symbol ')') pExpz; return $ Call i ez)
     <|> try (do Var <$> pIdent) -- Lookahed (try) as reserved keywords will only be discovered after consuming chars
     <|> try (do string "not"; spaces; Not <$> pExp)
+    -- <|> do symbol '('; e <-pExp; symbol ')';  pExp
     <|> do between (symbol '(') (symbol ')') pExp
     <|> try (do symbol '['; e <- pExp; spaces; fc <- pForC; spaces; cz <- pCz; symbol ']'; return $ Compr e (fc : cz))
     <|> do e <- between (symbol '[') (symbol ']') pExpz; return $ List e
@@ -96,11 +97,11 @@ pMulOp =
 
 -- ForClause
 pForC :: Parser CClause
-pForC = lexeme $ do string "for"; i <- pIdent;  many1 $ string " "; string "in";  many1 $ string " "; e <- pExp'; return $ CCFor i e
+pForC = lexeme $ do try(string "for"); spaces; i <- pIdent;  many1 $ satisfy isSpace; string "in";  many1 $ string " "; e <- pExp'; return $ CCFor i e
 
 -- IfClause
 pIfC :: Parser CClause
-pIfC = lexeme $ do try (string "if"); spaces; CCIf <$> pExp'
+pIfC = lexeme $ do try (string "if"); spaces; CCIf <$> pExp
 
 -- Clausez
 pCz :: Parser [CClause]
