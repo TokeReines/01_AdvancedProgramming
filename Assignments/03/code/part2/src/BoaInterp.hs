@@ -9,14 +9,14 @@ module BoaInterp
 
 import BoaAST
 import Control.Monad
-import Data.List (reverse, intercalate)
+import Data.List (intercalate)
 
 type Env = [(VName, Value)]
 
 data RunError = EBadVar VName | EBadFun FName | EBadArg String
   deriving (Eq, Show)
 
-newtype Comp a = Comp {runComp :: Env -> (Either RunError a, [String])}
+newtype Comp a = Comp {runComp :: Env -> (Either RunError a, [String]) }
 
 instance Monad Comp where
   return a = Comp (\_e -> (Right a, []))
@@ -39,10 +39,8 @@ abort err = Comp (\_e -> (Left err, []))
 look :: VName -> Comp Value
 look v = Comp (\e -> case lookup v e of
                       Just x -> (Right x, [])
-                      Nothing -> (Left $ EBadVar v, [])
-                      )
--- Runs  the  computation m with x bound  to v,  
--- in  addition  to  any  other current bindings
+                      Nothing -> (Left $ EBadVar v, []))
+
 withBinding :: VName -> Value -> Comp a -> Comp a
 withBinding x v m = Comp(\e -> runComp m ((x, v) : e))
 
@@ -82,7 +80,6 @@ operate In x y
   | (ListVal ys) <- y = if x `elem` ys then Right TrueVal else Right FalseVal
   | otherwise = Left "Second argument to In has to be a list"
 
-
 stringifyValue :: Value -> String
 stringifyValue v
   | NoneVal <- v = "None"
@@ -91,7 +88,7 @@ stringifyValue v
   | (IntVal i) <- v = show i
   | (StringVal s) <- v = s
   | (ListVal []) <- v = "[]"
-  | l@(ListVal vs) <- v = stringifyValues [l]
+  | l@(ListVal _) <- v = stringifyValues [l]
 
 stringifyValues :: [Value] -> String
 stringifyValues [] = ""
@@ -127,7 +124,6 @@ apply f v
   | otherwise = abort (EBadFun f)
 
 -- Main functions of interpreter
--- eval e is the computation that evaluates the expression e in the current environment and returns its value
 eval :: Exp -> Comp Value
 eval (Const v) = return v
 eval (Var v) = look v
@@ -167,7 +163,6 @@ evalCompr (cc:ccs) exp
     if truthy e' then do evalCompr ccs exp
     else do return []
 
--- runComp (eval (Compr (Var "j") [CCFor "i" (Call "range" [Const (IntVal 2),Var "n"]),CCFor "j" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"]), CCFor "l" (Call "range" [Oper Times (Var "i")(Const (IntVal 2)),Oper Times (Var "n") (Var "n"),Var "i"])])) [("n", IntVal 4)]
 exec :: Program -> Comp ()
 exec [] = return ()
 exec (h:ss)
