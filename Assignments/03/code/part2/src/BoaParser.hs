@@ -78,9 +78,9 @@ pCz =
 pExpz :: Parser [Exp]
 pExpz = lexeme $ do pExp `sepBy` symbol ','
 
--- Not called anywhere in the code. Defined in the AST, which is why we kept it here.
-pExps :: Parser [Exp]
-pExps = lexeme $ do pExp `sepBy1` symbol ','
+-- Not called anywhere in the code. Defined in the AST, which is why we kept it here as a commet.
+-- pExps :: Parser [Exp]
+-- pExps = lexeme $ do pExp `sepBy1` symbol ','
 
 pIdent :: Parser String
 pIdent =
@@ -153,8 +153,8 @@ lexeme p = do a <- p; spaces; return a
 
 pComments' :: Parser ()
 pComments' =
-  try (do spaces; symbol' '#'; c <- manyTill (satisfy isAscii) (char '\n'); return ())
-    <|> try (do spaces; symbol' '#'; c <- manyTill (satisfy isAscii) eof; return ()) -- ! Try could properly be removed
+  try (do spaces; symbol' '#'; manyTill (satisfy isAscii) (char '\n'); return ())
+    <|> try (do spaces; symbol' '#'; manyTill (satisfy isAscii) eof; return ()) -- ! Try could properly be removed
 
 pComments :: Parser a -> Parser a
 pComments p = do skipMany pComments'; a <- p; skipMany pComments'; return a

@@ -4,3 +4,5 @@
 stack.yaml.lock
 boa.cabal
 *.cabal
+report.pdf
+code.zip
