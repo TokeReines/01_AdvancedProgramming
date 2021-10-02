@@ -6,3 +6,4 @@ boa.cabal
 *.cabal
 report.pdf
 code.zip
+*.beam
