@@ -1,45 +1,66 @@
 -module(async).
 
--export([new/2, wait/1, poll/1]).
+-export([loop/1 ,new/2, wait/1, poll/1]).
 
-% Aid stands for an actions ID, which is an opaque datatype (that is you decide what it should it should be)
-% Actionid -> 0.
 
-% request_reply(Pid, Request) ->
-%     Pid ! {self(), Request},
-%     receive
-%         {Pid, Response} -> Response
-%     end.
-
-% Færdig/result, 
-
-% starts a concurrent computatation that computes 'Fun(Arg)'. It returns an action ID (Aid)
-% A1 = async:new(fun ({X, Y}) -> X+Y end, {1,2}).
-% A2 = async:new(fun ({X}) -> timer:sleep(15000) end, 15000).
--spec new(fun(), any()) -> pid().
-new(Fun, Arg) -> 
-      spawn(fun() -> 
-        Res = Fun(Arg),
-        receive
-          From -> From ! Res
-        end
-      end).
+loop(State) ->
+    {Worker, Result, Exception} = State,
+    receive 
+        {new, {Fun, Arg}} -> 
+            io:format("new1~n"),
+            process_flag(trap_exit, true),
+            Work = spawn_link (fun() ->
+                Res = Fun(Arg),
+                self() ! {finished, Res},
+                receive
+                    From -> From ! 5
+                end
+            end),
+            loop({Work, Result, Exception});
+        {finished, Res} -> 
+            io:format("finished~n"),
+            loop({Worker, Res, nothing});
+        {wait, From} -> 
+            io:format("wait~n"),
+            case Result of
+                exceptions ->  From ! {exceptions, Exception};
+                _ -> Worker ! From
+            end,            
+            loop(State);
+        {poll, From} -> 
+            io:format("poll~n"),
+            case Result of
+                nothing -> From ! nothing;
+                exceptions ->  From ! {exceptions, Exception};
+                _ -> From ! {ok, Result}
+            end,
+            loop(State);
+        {'EXIT', Worker, Reason} -> 
+            io:format("exit~n"),
+            loop({Worker, exceptions, Reason})
+    end.
     
+
+%new(Fun, Arg) that starts a concurrent computation that computes Fun(Arg). It returns an action ID
+%X = async:new(fun({}) -> timer:sleep(15000) end, {}).
+new(Fun, Arg) -> 
+    Worker = spawn(fun() -> loop({nothing, nothing, nothing}) end),
+    Worker ! {new, {Fun, Arg}},
+    Worker.
 
 % Waits for an asyncronous action to complete, and return the values of the computation. If the asynchronous
 % action threw an exception, then the exceptions is rethrown by wait.
 wait(Aid) -> 
-  Aid ! self(),
-  receive
-    Res -> Res
-  end.
-
+    Aid ! {wait, self()},
+    receive
+        Res -> Res
+    end.
 
 % that check wether an asynchronoys action has completed yet. If it has not completed yet
 % then the result is 'nothing'; otherwise the result is '{exceptions, Ex}' if the 
 % the asynchronous action raised the exceptio 'Ex', or '{ok, Res}' if it returned the value 'Res'.
-poll(Aid) -> not_implemented.
-  % receive
-  %            {'nothing'} -> {'nothing'};
-  %        end.
-
+poll(Aid) -> 
+    Aid ! {poll, self()},
+    receive
+        Res -> Res
+    end.
