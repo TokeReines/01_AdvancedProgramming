@@ -1,46 +1,51 @@
 -module(async).
 
--export([loop/1 ,new/2, wait/1, poll/1]).
-
+-export([loop/1 ,new/2, wait/1, poll/1, setup/0]).
 
 loop(State) ->
-    {Worker, Result, Exception} = State,
+    {Worker, Result} = State,
     receive 
         {new, {Fun, Arg}} -> 
-            process_flag(trap_exit, true),
             Me = self(),
+            process_flag(trap_exit, true),
             Work = spawn_link (fun() ->
                 Res = Fun(Arg),
                 Me ! {finished, Res},
                 receive
-                    From -> From ! 5
+                    From -> From ! Res
                 end
             end),
+            {Result, Exception} = receive
+                {Worker, NewVal} -> 
+                io:fwrite("Analytic function success~n"),
+                {NewVal, Ex};
+                {'EXIT', Worker, Reason} -> 
+                io:fwrite("Analytic function throw~n"),
+                Reason
+            end,
             loop({Work, Result, Exception});
-        {finished, Res} -> 
-            loop({Worker, Res, nothing});
         {wait, From} -> 
             case Result of
-                exceptions ->  From ! {exceptions, Exception};
+                {exceptions} ->  From ! {exceptions, Exception};
                 _ -> Worker ! From
             end,            
             loop(State);
         {poll, From} -> 
             case Result of
-                nothing -> From ! nothing;
-                exceptions ->  From ! {exceptions, Exception};
+                {nothing, nothing} -> From ! nothing;
+                {exception, Reason} ->  From ! {exception, Reason};
                 _ -> From ! {ok, Result}
             end,
             loop(State);
         {'EXIT', Worker, Reason} -> 
-            loop({Worker, exceptions, Reason})
+            loop({Worker, {exception, Reason}})
     end.
     
 
 %new(Fun, Arg) that starts a concurrent computation that computes Fun(Arg). It returns an action ID
 %X = async:new(fun({}) -> timer:sleep(15000) end, {}).
 new(Fun, Arg) -> 
-    Worker = spawn(fun() -> loop({nothing, nothing, nothing}) end),
+    Worker = spawn(fun() -> loop({nothing, nothing}) end),
     Worker ! {new, {Fun, Arg}},
     Worker.
 
@@ -60,3 +65,6 @@ poll(Aid) ->
     receive
         Res -> Res
     end.
+
+setup() ->
+    E4 = async:new(fun(N) -> 1+1, throw(true) end, 1). 

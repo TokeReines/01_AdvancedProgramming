@@ -37,10 +37,6 @@ spawnEmojiServers(EMap) ->
 spawnEmojiServer(Emo) -> 
     spawn(fun () -> loopEmoji({Emo, []}) end).
 
-% -spec spawnAnalyticsServer(analytic_fun(_)) -> pid().
-% spawnAnalyticsServer({Fun, State}) -> 
-%     spawn(fun () -> loopAnalytics({Fun, State}) end).
-
 % Main emojo server
 -spec loopServer(emojiProcessMap()) -> any().
 loopServer(State) -> % ! Make seperation of concerns into auxilary functions
@@ -199,36 +195,6 @@ loopEmoji(State) ->
           loopEmoji(NewState)
       end
   end.
-
-% Micro server for a single analytics function for a specic shortcode and its registered aliases
-% -spec loopAnalytics(analytic_fun(_)) -> any().
-% loopAnalytics(State) ->
-%   {Fun, Value} = State,
-%   receive
-%     remove_analytics -> 
-%       io:fwrite("Deleting loopAnalytics~n"),
-%       ok;
-%     {From, Ref, stop} -> 
-%       io:fwrite("Stopping loopAnalytics~n"),
-%       From ! {Ref, ok};
-%     {From, {run, Short}} -> 
-%       Me = self(),
-%       process_flag(trap_exit, true),
-%       Worker=spawn_link(fun()->
-%         NewVal = Fun(Short, Value),
-%         Me ! {self(), NewVal}
-%       end),
-%       NewValue = receive
-%         {Worker, NewVal} -> 
-%           io:fwrite("Analytic function success~n"),
-%           NewVal;
-%         {'EXIT', Worker, Reason} -> 
-%           io:fwrite("Analytic function throw~n"),
-%           Value
-%       end,
-%       From ! {self(), {analytic_completed, NewValue}},
-%       loopAnalytics({Fun, NewValue})
-%   end.
 
 -spec request_reply(pid(), any()) -> any().
 request_reply(Pid, Request) ->
