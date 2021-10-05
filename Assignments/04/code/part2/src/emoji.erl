@@ -2,7 +2,7 @@
 
 -export([start/1, new_shortcode/3, alias/3, delete/2, lookup/2,
          analytics/5, get_analytics/2, remove_analytics/3,
-         stop/1, isuniqueemojimap/1, setup/0, try_it/0]).
+         stop/1]).
 
 -type shortcode() :: string().
 -type label() :: string().
@@ -48,7 +48,6 @@ loopServer(State) -> % ! Make seperation of concerns into auxilary functions
       loopServer(State);
     % * Stop server
     {From, Ref, stop} ->
-      io:fwrite("Stopping loopServer~n"),
       UPids = lists:ukeysort(2, State),
       lists:foreach(fun (Elem) ->
          {_Shortcode, Pid} = Elem,
@@ -83,7 +82,6 @@ loopServer(State) -> % ! Make seperation of concerns into auxilary functions
           From ! {Ref, no_emoji};
         % Ask emoji process to send emoji
         {value, {_Shortcode, Pid}} ->
-          % io:format("LoopServer lookup 2 ~lp ~n", [Pid]),
           Pid ! {From, Ref, {get_emoji, Short}}
       end,
       loopServer(State);
@@ -145,11 +143,9 @@ runAnalyticsFun(Fun, Short, Value) ->
   end),
   NewValue = receive
     {Worker, NewVal} -> 
-      io:fwrite("Analytic function success~n"),
       NewVal;
     {'EXIT', Worker, Reason} -> 
-      io:fwrite("Analytic function throw~n"),
-      Value
+      Value % Still outputs "Error in process <X.XX.X> with exit value:..."
   end,
   NewValue.
 
@@ -163,7 +159,6 @@ loopEmoji(State) ->
       NewAnalMap = lists:keydelete(Label, 1, AnalMap),
       loopEmoji({Emoji, NewAnalMap});
     {From, Ref, stop} ->
-      io:fwrite("Stopping loopEmoji~n"),
       From ! {Ref, ok};
     % * Lookup emoji
     {From, Ref, {get_emoji, Short}} -> 
@@ -175,6 +170,7 @@ loopEmoji(State) ->
       From ! {Ref, Res},
       loopEmoji({Emoji, NewAnalMap});
     {From, Ref, get_analytics} ->
+      % ! Should we return an error if there is no functions registered
       Stats = lists:map(fun(Elem) -> 
           {ALabel, _AFun, AState} = Elem,
           {ALabel, AState}
@@ -217,14 +213,13 @@ delete(E, Short) -> non_blocking(E, {delete, Short}).
 lookup(E, Short) -> request_reply(E, {lookup, Short}).
 
 analytics(E, Short, Fun, Label, Init) -> request_reply(E, {analytics, Short, Fun, Label, Init}).
-% try take a look in the accessed analytics function defined. the SC parameter is the shortcode
 
 get_analytics(E, Short) -> request_reply(E, {get_analytics, Short}).
 
 remove_analytics(E, Short, Label) -> non_blocking(E, {remove_analytics, Short, Label}).
 
 -spec stop(pid()) -> any().
-stop(E) -> request_reply(E, stop). %! Use ukeysort on Pid to get a list of all process that need to be send stop
+stop(E) -> request_reply(E, stop).
 
 % Helper Functions
 -spec isuniqueemojimap(emojiMap()) -> boolean().
@@ -239,38 +234,38 @@ isnewshortcode(Short, EmojiList) ->
   not lists:keymember(Short, 1, EmojiList).
 
 
-hit(_, N) -> N+1.
-accessed(SC, TS) ->
-  Now = calendar:local_time(),
-  [{SC,Now} | TS].
+% hit(_, N) -> N+1.
+% accessed(SC, TS) ->
+%   Now = calendar:local_time(),
+%   [{SC,Now} | TS].
 
-setup() ->
-    {ok, E} = emoji:start([]),
-    ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
-    ok = emoji:new_shortcode(E, "poop", <<"\xF0\x9F\x92\xA9">>),
-    ok = emoji:alias(E, "poop", "hankey"),
-    ok = emoji:analytics(E, "poop", fun(_, N) -> N+1 end, "Counter", 0),
-    %ok = emoji:analytics(E, "hankey", fun hit/2, "Counter", 0),
-    %ok = emoji:analytics(E, "poop", fun accessed/2, "Accessed", []),
-    %ok = emoji:analytics(E, "poop", fun(S, _) -> throw(S) end, "Throw", []),
-    %emoji:remove_analytics(E, "poop", "Accessed"),
-    %emoji:remove_analytics(E, "poop", "Accessed"),
-    %emoji:lookup(E, "poop"),
-    E.
+% setup() ->
+%     {ok, E} = emoji:start([]),
+%     ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+%     ok = emoji:new_shortcode(E, "poop", <<"\xF0\x9F\x92\xA9">>),
+%     ok = emoji:alias(E, "poop", "hankey"),
+%     ok = emoji:analytics(E, "poop", fun(_, N) -> N+1 end, "Counter", 0),
+%     %ok = emoji:analytics(E, "hankey", fun hit/2, "Counter", 0),
+%     %ok = emoji:analytics(E, "poop", fun accessed/2, "Accessed", []),
+%     %ok = emoji:analytics(E, "poop", fun(S, _) -> throw(S) end, "Throw", []),
+%     %emoji:remove_analytics(E, "poop", "Accessed"),
+%     %emoji:remove_analytics(E, "poop", "Accessed"),
+%     %emoji:lookup(E, "poop"),
+%     E.
 
-print_analytics(Stats) ->
-    lists:foreach(fun({Lab, Res}) -> io:fwrite("  ~s: ~p~n", [Lab, Res]) end,
-                  Stats).
+% print_analytics(Stats) ->
+%     lists:foreach(fun({Lab, Res}) -> io:fwrite("  ~s: ~p~n", [Lab, Res]) end,
+%                   Stats).
 
-try_it() ->
-    E = setup(),
-    % {ok, Res} = emoji:lookup(E, "poop"),
-    {ok, Res} = emoji:lookup(E, "hankey"),
-    io:fwrite("I looked for :hankey: and got a pile of ~ts~n", [Res]),
-    {ok, Stats} = emoji:get_analytics(E, "poop"),
-    io:fwrite("Poppy statistics:~n"),
-    print_analytics(Stats),
-    io:fwrite("(Hopefully you got a 1 under 'Counter')~n").
+% try_it() ->
+%     E = setup(),
+%     % {ok, Res} = emoji:lookup(E, "poop"),
+%     {ok, Res} = emoji:lookup(E, "hankey"),
+%     io:fwrite("I looked for :hankey: and got a pile of ~ts~n", [Res]),
+%     {ok, Stats} = emoji:get_analytics(E, "poop"),
+%     io:fwrite("Poppy statistics:~n"),
+%     print_analytics(Stats),
+%     io:fwrite("(Hopefully you got a 1 under 'Counter')~n").
 
 % Shortcuts for the terminal
 % c("emoji.erl").

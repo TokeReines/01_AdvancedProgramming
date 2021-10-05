@@ -21,7 +21,7 @@ testsuite() ->
        , test_stop()
        ]
       },
-      {"Basic emoji and alias functionality", spawn,
+      {"Basic emoji and alias functionality, with start stop", spawn,
         [ test_register_multiple_emojis()
         , test_register_lookup()
         , test_register_lookup_delete_lookup()
@@ -32,14 +32,26 @@ testsuite() ->
         , test_alias_delete_alias()
         , test_alias_of_alias_delete_alias()
         ]
+      },
+      {"Anlytics: `Hit = fun (_, N) -> end` and  `Last = fun (S, _) -> S end`", spawn,
+        [ test_register_last_x2()
+        , test_register_hit_last()
+        , test_register_hit_works()
+        , test_register_hit_last_works()
+        , test_register_hit_last_works_alias()
+        , test_register_hit_last_works_aliasx3()
+        , test_register_hit_last_remove()
+        , test_register_hit_last_works_remove()
+        ]
+      },
+      {"Misc", spawn,
+        [ test_start_server_small()
+        , test_start_server_medium()
+        , test_start_server_with_duplicate_shortcode()
+        , test_duplicate_shortcode_smiley()
+        , test_register_throw()
+        ]
       }
-      % {"Start/stop behaviour", spawn,
-      %  [ test_start_server_with_emoji()
-      %  , test_start_stop_server()
-      %  , test_start_server_with_duplicate_shortcode()
-      %  , test_duplicate_shortcode_smiley()
-      %  ]
-      % }
     ].
 
 % * Basic behaviour
@@ -86,7 +98,6 @@ test_analytics() ->
   {"Registering an analytics function, stores it correctly",
      fun () ->
        {ok, E} = emoji:start([{"smiley", <<240,159,152,131>>}]),
-      %  Res = emoji:analytics(E, "Counter", fun(_, N) -> N+1 end, "smiley", 0),
        ?assertEqual(ok, emoji:analytics(E, "smiley", fun(_, N) -> N+1 end, "Counter", 0))
      end }.
 
@@ -98,7 +109,6 @@ test_lookup_get_analytics() ->
        {ok, _} = emoji:lookup(E, "smiley"),
        {ok, _} = emoji:lookup(E, "smiley"),
        {ok, _} = emoji:lookup(E, "smiley"),
-      %  {ok, Stat} = emoji:get_analytics(E, "Counter"),
        ?assertEqual({ok,[{"Counter",3}]}, emoji:get_analytics(E, "smiley"))
      end }.
 
@@ -109,7 +119,6 @@ test_lookup_alias_get_analytics() ->
       ok = emoji:alias(E, "smiley", "smiley1"),
       ok = emoji:analytics(E, "smiley1", fun(_, N) -> N+1 end, "Counter", 0),
       {ok, _} = emoji:lookup(E, "smiley"),
-      %  {ok, Stat} = emoji:get_analytics(E, "Counter"),
        ?assertEqual({ok,[{"Counter",1}]}, emoji:get_analytics(E, "smiley"))
      end }.
 
@@ -131,7 +140,7 @@ test_stop() ->
       ?assertEqual(ok, emoji:stop(E))
   end }.
 
-% * Basic emoji and alias functionality
+% * Basic emoji and alias functionality, with start/stop
 
 test_register_multiple_emojis() ->
   { "Register emoji 3 time with 2 SC's",
@@ -139,7 +148,8 @@ test_register_multiple_emojis() ->
       {ok, E} = emoji:start([]),
       ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
       {error, _} = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
-      ?assertEqual(ok, emoji:new_shortcode(E, "smiley1", <<240,159,152,131>>))
+      ?assertEqual(ok, emoji:new_shortcode(E, "smiley1", <<240,159,152,131>>)),
+      ok = emoji:stop(E)
   end}.
 
 test_register_lookup() ->
@@ -147,7 +157,8 @@ test_register_lookup() ->
     fun () -> 
       {ok, E} = emoji:start([]),
       ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
-      ?assertMatch({ok, _}, emoji:lookup(E, "smiley"))
+      ?assertMatch({ok, _}, emoji:lookup(E, "smiley")),
+      ok = emoji:stop(E)
   end}.
 test_register_lookup_delete_lookup() ->
   { "Register emoji, lookup, delete, and check that its deleted",
@@ -156,7 +167,8 @@ test_register_lookup_delete_lookup() ->
       ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
       {ok, _} = emoji:lookup(E, "smiley"),
       emoji:delete(E, "smiley"),
-      ?assertEqual(no_emoji, emoji:lookup(E, "smiley"))
+      ?assertEqual(no_emoji, emoji:lookup(E, "smiley")),
+      ok = emoji:stop(E)
   end}.
 
 test_register_sc_alias() ->
@@ -165,7 +177,8 @@ test_register_sc_alias() ->
       {ok, E} = emoji:start([]),
       ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
       ok = emoji:alias(E, "smiley", "smiley1"),
-      ?assertMatch({ok, _}, emoji:lookup(E, "smiley1"))
+      ?assertMatch({ok, _}, emoji:lookup(E, "smiley1")),
+      ok = emoji:stop(E)
   end}.
 
 test_alias_of_alias() ->
@@ -175,7 +188,8 @@ test_alias_of_alias() ->
       ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
       ok = emoji:alias(E, "smiley", "smiley1"),
       ok = emoji:alias(E, "smiley1", "smiley2"),
-      ?assertMatch({ok, _}, emoji:lookup(E, "smiley2"))
+      ?assertMatch({ok, _}, emoji:lookup(E, "smiley2")),
+      ok = emoji:stop(E)
   end}.
 
 test_alias_delete() ->
@@ -185,7 +199,8 @@ test_alias_delete() ->
       ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
       ok = emoji:alias(E, "smiley", "smiley1"),
       emoji:delete(E, "smiley1"),
-      ?assertEqual(no_emoji, emoji:lookup(E, "smiley1"))
+      ?assertEqual(no_emoji, emoji:lookup(E, "smiley1")),
+      ok = emoji:stop(E)
   end}.
 
 test_alias_delete_orginal() ->
@@ -195,7 +210,8 @@ test_alias_delete_orginal() ->
       ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
       ok = emoji:alias(E, "smiley", "smiley1"),
       emoji:delete(E, "smiley"),
-      ?assertEqual(no_emoji, emoji:lookup(E, "smiley1"))
+      ?assertEqual(no_emoji, emoji:lookup(E, "smiley1")),
+      ok = emoji:stop(E)
   end}.
 
 test_alias_delete_alias() ->
@@ -206,7 +222,8 @@ test_alias_delete_alias() ->
       ok = emoji:alias(E, "smiley", "smiley1"),
       emoji:delete(E, "smiley1"),
       ?assertEqual(no_emoji, emoji:lookup(E, "smiley1")),
-      ?assertEqual(no_emoji, emoji:lookup(E, "smiley"))
+      ?assertEqual(no_emoji, emoji:lookup(E, "smiley")),
+      ok = emoji:stop(E)
   end}.
 
 test_alias_of_alias_delete_alias() ->
@@ -221,57 +238,157 @@ test_alias_of_alias_delete_alias() ->
       ?assertEqual(no_emoji, emoji:lookup(E, "smiley")),
       ?assertEqual(no_emoji, emoji:lookup(E, "smiley1")),
       ?assertEqual(no_emoji, emoji:lookup(E, "smiley2")),
-      ?assertEqual(no_emoji, emoji:lookup(E, "smiley3"))
+      ?assertEqual(no_emoji, emoji:lookup(E, "smiley3")),
+      ok = emoji:stop(E)
   end}.
 
-% * "Start/stop behaviour"
+% * Analytics functionality
+
+hit(_, N) -> N+1.
+last(S, _) -> S.
+
+test_register_last_x2() ->
+  {"Rigster last two times for shame shortcode/alias with same label",
+    fun () ->
+      {ok, E} = emoji:start([]),
+      ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+      ok = emoji:analytics(E, "smiley", fun last/2, "last", 0),
+      ?assertMatch({error, _}, emoji:analytics(E, "smiley", fun last/2, "last", 0))
+    end}.
+
+test_register_hit_works() -> 
+  {"Rigster hit and check that get_analytics works for 5 lookups",
+    fun () ->
+      {ok, E} = emoji:start([]),
+      ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+      ok = emoji:analytics(E, "smiley", fun hit/2, "Counter", 0),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      ?assertEqual({ok,[{"Counter",5}]}, emoji:get_analytics(E, "smiley"))
+  end}.
+
+test_register_hit_last() -> 
+  {"Rigster last and hit with different labels",
+    fun () ->
+      {ok, E} = emoji:start([]),
+      ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+      ok = emoji:analytics(E, "smiley", fun last/2, "last", 0),
+      ?assertEqual(ok, emoji:analytics(E, "smiley", fun hit/2, "Counter", 0))
+  end}.
+
+test_register_hit_last_works() -> 
+  {"Rigster last and hit, and check that they work",
+    fun () ->
+      {ok, E} = emoji:start([]),
+      ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+      ok = emoji:analytics(E, "smiley", fun hit/2, "Counter", 0),
+      ok = emoji:analytics(E, "smiley", fun last/2, "Last", 0),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      ?assertEqual({ok,[{"Last","smiley"},{"Counter",3}]}, emoji:get_analytics(E, "smiley"))
+  end}.
+
+test_register_hit_last_works_alias() -> 
+  {"Rigster last and hit, and check that they work with alias'",
+    fun () ->
+      {ok, E} = emoji:start([]),
+      ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+      ok = emoji:alias(E, "smiley", "smiley1"),
+      ok = emoji:analytics(E, "smiley", fun hit/2, "Counter", 0),
+      ok = emoji:analytics(E, "smiley1", fun last/2, "Last", 0),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley1"),
+      ?assertEqual({ok,[{"Last","smiley1"},{"Counter",3}]}, emoji:get_analytics(E, "smiley"))
+  end}.
+
+test_register_hit_last_works_aliasx3() -> 
+  {"Rigster last and hit, and check that they work with alias'",
+    fun () ->
+      {ok, E} = emoji:start([]),
+      ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+      ok = emoji:alias(E, "smiley", "smiley1"),
+      ok = emoji:alias(E, "smiley1", "smiley2"),
+      ok = emoji:analytics(E, "smiley1", fun hit/2, "Counter", 0),
+      ok = emoji:analytics(E, "smiley2", fun last/2, "Last", 0),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley1"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley2"),
+      {ok, _} = emoji:lookup(E, "smiley1"),
+      ?assertEqual({ok,[{"Last","smiley1"},{"Counter",5}]}, emoji:get_analytics(E, "smiley1"))
+  end}.
+
+test_register_hit_last_remove() -> 
+  {"Rigster last and hit, and remove",
+    fun () ->
+      {ok, E} = emoji:start([]),
+      ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+      ok = emoji:analytics(E, "smiley", fun hit/2, "Counter", 0),
+      ok = emoji:analytics(E, "smiley", fun last/2, "Last", 0),
+      emoji:remove_analytics(E, "smiley", "Counter"),
+      emoji:remove_analytics(E, "smiley", "Last"),
+      ?assertMatch({ok, []}, emoji:get_analytics(E, "smiley"))
+  end}.
+test_register_hit_last_works_remove() -> 
+  {"Rigster last and hit, they work, and remove",
+    fun () ->
+      {ok, E} = emoji:start([]),
+      ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+      ok = emoji:analytics(E, "smiley", fun hit/2, "Counter", 0),
+      ok = emoji:analytics(E, "smiley", fun last/2, "Last", 0),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      emoji:remove_analytics(E, "smiley", "Counter"),
+      emoji:remove_analytics(E, "smiley", "Last"),
+      ?assertMatch({ok, []}, emoji:get_analytics(E, "smiley"))
+  end}.
+
+% * "Misc"
  
-% test_start_server_with_emoji() -> 
-%     {"We can call start/1 with some emojis and it does not crash",
-%       fun () ->
-%         ?assertMatch({ok, _}, emoji:start(someemoji:small()))
-%       end }.
+test_start_server_small() -> 
+  {"Start server with someemoji:small",
+    fun () ->
+      ?assertMatch({ok, _}, emoji:start(someemoji:small()))
+  end }.
 
-% test_start_stop_server() -> 
-%     {"Start and stop a server",
-%       fun () ->
-%         {ok, E} = emoji:start([]),
-%         ?assertEqual(ok, emoji:stop(E))
-%       end }.
+test_start_server_medium() -> 
+  {"Start server with someemoji:medium",
+    fun () ->
+      ?assertMatch({ok, _}, emoji:start(someemoji:medium()))
+  end }.
+
       
-% test_start_server_with_duplicate_shortcode() -> 
-%     {"Calling start/1 with emojis with non-unique shortcodes returns an error",
-%       fun () ->
-%         ?assertMatch({error, _}, emoji:start([{"+1", <<"👍️"/utf8>>}, {"+1", <<"👍️"/utf8>>}]))
-%       end }.
+test_start_server_with_duplicate_shortcode() -> 
+  {"Start server with non-unique shortcodes",
+    fun () ->
+      ?assertMatch({error, _}, emoji:start([{"+1", <<"👍️"/utf8>>}, {"+1", <<"👍️"/utf8>>}]))
+  end }.
 
+test_duplicate_shortcode_smiley() ->
+  {"Registering existing shortcode returns error",
+    fun () ->
+      {ok, E} = emoji:start([{"smiley", <<240,159,152,131>>}]),
+      ?assertMatch({error, _}, emoji:new_shortcode(E, "smiley", <<240,159,152,131>>))
+  end }.
 
-
-% test_start_stop_with_emojis() -> 
-%     {"Start server. Populate with emojis. Stop server",
-%       fun () ->
-%         {ok, E} = emoji:start([]),
-%         ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
-%         ok = emoji:new_shortcode(E, "poop", <<"\xF0\x9F\x92\xA9">>),
-%         ?assertEqual(ok, emoji:stop(E)) 
-%     end }.
-
-% test_stop_stop_with_emojis_and_analytics() -> 
-%     {"Start server. Populate with emojis and analytics. Stop server",
-%       fun () ->
-%         {ok, E} = emoji:start([]),
-%         ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
-%         ok = emoji:new_shortcode(E, "poop", <<"\xF0\x9F\x92\xA9">>),
-%         ok = emoji:analytics(E, "smiley", fun(_, N) -> N+1 end, "Counter", 0),
-%         ?assertEqual(ok, emoji:stop(E)) 
-%     end }.
-
-% test_duplicate_shortcode_smiley() ->
-%   {"Registering existing shortcode returns error",
-%     fun () ->
-%       {ok, S} = emoji:start([{"smiley", <<240,159,152,131>>}, {"smiley", <<240,159,152,131>>}]),
-%       ?assertMatch({error, _}, emoji:new_shortcode(S, "smiley", <<240,159,152,131>>))
-%     end }.
+test_register_throw() -> 
+  {"Register hit and throw (fun(S, _) -> throw(S) end), and still works, and removable",
+    fun () ->
+      {ok, E} = emoji:start([]),
+      ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
+      ok = emoji:analytics(E, "smiley", fun hit/2, "Counter", 0),
+      ok = emoji:analytics(E, "smiley", fun(S, _) -> throw(S) end, "Throw", []),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      {ok, _} = emoji:lookup(E, "smiley"),
+      ?assertMatch({ok, [{"Throw", []},{"Counter", 1}]}, emoji:get_analytics(E, "smiley"))
+  end }.
 
 % c("../src/emoji.erl").
 % c(test_emoji).
