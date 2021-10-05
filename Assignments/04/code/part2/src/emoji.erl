@@ -134,6 +134,7 @@ loopServer(State) -> % ! Make seperation of concerns into auxilary functions
       end
   end.
 
+-spec runAnalyticsFun(analytic_fun(any()), shortcode(), any()) -> any().
 runAnalyticsFun(Fun, Short, Value) ->
   Me = self(),
   process_flag(trap_exit, true),
@@ -144,7 +145,7 @@ runAnalyticsFun(Fun, Short, Value) ->
   NewValue = receive
     {Worker, NewVal} -> 
       NewVal;
-    {'EXIT', Worker, Reason} -> 
+    {'EXIT', Worker, _Reason} -> 
       Value % Still outputs "Error in process <X.XX.X> with exit value:..."
   end,
   NewValue.
@@ -200,22 +201,28 @@ request_reply(Pid, Request) ->
     {Ref, Response} -> Response
   end.
 
+-spec non_blocking(pid(), any()) -> any().
 non_blocking(Pid, Msg) -> Pid ! Msg.
 
 -spec new_shortcode(pid(), shortcode(), emoji()) -> any().
 new_shortcode(E, Short, Emo) -> request_reply(E, {new_shortcode, Short, Emo}).
 
+-spec alias(pid(), shortcode(), shortcode()) -> any().
 alias(E, Short1, Short2) -> request_reply(E, {alias, Short1, Short2}).
 
+-spec delete(pid(), shortcode()) -> any(). 
 delete(E, Short) -> non_blocking(E, {delete, Short}).
 
 -spec lookup(pid(), shortcode()) -> any().
 lookup(E, Short) -> request_reply(E, {lookup, Short}).
 
+-spec analytics(pid(), shortcode(), analytic_fun(any()), label(), any()) -> any().
 analytics(E, Short, Fun, Label, Init) -> request_reply(E, {analytics, Short, Fun, Label, Init}).
 
+-spec get_analytics(pid(), shortcode()) -> any().
 get_analytics(E, Short) -> request_reply(E, {get_analytics, Short}).
 
+-spec remove_analytics(pid(), shortcode(), label()) -> any().
 remove_analytics(E, Short, Label) -> non_blocking(E, {remove_analytics, Short, Label}).
 
 -spec stop(pid()) -> any().
@@ -230,6 +237,7 @@ isuniqueemojimap(EmojiMap) ->
             length(EmojiMap) == length(UniqueEmojiMap)
   end.
 
+-spec isnewshortcode(shortcode(), emojiProcessMap()) -> boolean().
 isnewshortcode(Short, EmojiList) ->
   not lists:keymember(Short, 1, EmojiList).
 
