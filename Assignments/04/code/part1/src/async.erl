@@ -7,7 +7,6 @@ loop(State) ->
     {Worker, Result, Exception} = State,
     receive 
         {new, {Fun, Arg}} -> 
-            io:format("new1~n"),
             process_flag(trap_exit, true),
             Work = spawn_link (fun() ->
                 Res = Fun(Arg),
@@ -18,17 +17,14 @@ loop(State) ->
             end),
             loop({Work, Result, Exception});
         {finished, Res} -> 
-            io:format("finished~n"),
             loop({Worker, Res, nothing});
         {wait, From} -> 
-            io:format("wait~n"),
             case Result of
                 exceptions ->  From ! {exceptions, Exception};
                 _ -> Worker ! From
             end,            
             loop(State);
         {poll, From} -> 
-            io:format("poll~n"),
             case Result of
                 nothing -> From ! nothing;
                 exceptions ->  From ! {exceptions, Exception};
@@ -36,7 +32,6 @@ loop(State) ->
             end,
             loop(State);
         {'EXIT', Worker, Reason} -> 
-            io:format("exit~n"),
             loop({Worker, exceptions, Reason})
     end.
     
