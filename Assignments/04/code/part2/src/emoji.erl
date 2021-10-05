@@ -45,10 +45,17 @@ spawnAnalyticsServer({Fun, State}) ->
 -spec loopServer(emojiProcessMap()) -> any().
 loopServer(State) -> % ! Make seperation of concerns into auxilary functions
   receive
+    {remove_analytics, Short, Label} ->
+      case lists:keysearch(Short, 1, State) of
+        {value, {_Shortcode, Pid}} -> Pid ! {remove_analytics, Label}
+      end,
+      loopServer(State);
     % * Stop server
     {From, Ref, stop} ->
+      io:fwrite("Stopping loopServer~n"),
       UPids = lists:ukeysort(2, State),
-      lists:foreach(fun (Pid) -> 
+      lists:foreach(fun (Elem) ->
+         {_Shortcode, Pid} = Elem,
          request_reply(Pid, stop)
         end, UPids),
       From ! {Ref, ok};
@@ -138,8 +145,18 @@ loopServer(State) -> % ! Make seperation of concerns into auxilary functions
 loopEmoji(State) -> 
   {Emoji, AnalMap} = State,
   receive
-    {From, delete} -> delete;
+    {_From, delete} -> delete;
+    {remove_analytics, Label} ->
+      Analytics = lists:keysearch(Label, 1, AnalMap),
+      case Analytics of
+        false -> loopEmoji(State);
+        {value, {_ALabel, Pid, _AState}} ->
+          Pid ! remove_analytics,
+          NewAnalMap = lists:keydelete(Label, 1, AnalMap),
+          loopEmoji({Emoji, NewAnalMap})
+      end;
     {From, Ref, stop} ->
+      io:fwrite("Stopping loopEmoji~n"),
       lists:foreach(fun(Elem) -> 
           {_ALabel, Pid, _AState} = Elem,   
           request_reply(Pid, stop)
@@ -172,7 +189,7 @@ loopEmoji(State) ->
       From ! {Ref, {ok, Stats}},
       loopEmoji(State);
     % * Registers a new analytics function
-    {From, Ref, {analytics, Short, Fun, Label, Init}} ->
+    {From, Ref, {analytics, _Short, Fun, Label, Init}} ->
       % Check for duplicate Labels
       Res = lists:keysearch(Label, 1, AnalMap),
       case Res of
@@ -191,19 +208,27 @@ loopEmoji(State) ->
 loopAnalytics(State) ->
   {Fun, Value} = State,
   receive
-    {From, Ref, stop} -> From ! {Ref, ok};
+    remove_analytics -> 
+      io:fwrite("Deleting loopAnalytics~n"),
+      ok;
+    {From, Ref, stop} -> 
+      io:fwrite("Stopping loopAnalytics~n"),
+      From ! {Ref, ok};
     {From, _Ref, get_analytics} ->
       From ! {ok, Value},
       loopAnalytics({Fun, Value});
-    {_From, _Ref, stop} -> 
-      not_implemented;
     {From, {run, Short}} -> 
       NewValue = Fun(Short, Value), %! Should be performed in its own process or similar
       From ! {self(), {analytic_completed, NewValue}},
       loopAnalytics({Fun, NewValue});
-    {'EXIT', Pid, Reason} -> 
+    {'EXIT', _Pid, _Reason} -> 
       not_implemented
   end.
+
+% handleAnalytics(Request, State) ->
+%   case Request of
+%     stop ->
+%     get_analytics ->
 
 -spec request_reply(pid(), any()) -> any().
 request_reply(Pid, Request) ->
@@ -230,7 +255,7 @@ analytics(E, Short, Fun, Label, Init) -> request_reply(E, {analytics, Short, Fun
 
 get_analytics(E, Short) -> request_reply(E, {get_analytics, Short}).
 
-remove_analytics(_, _, _) -> not_implemented.
+remove_analytics(E, Short, Label) -> non_blocking(E, {remove_analytics, Short, Label}).
 
 -spec stop(pid()) -> any().
 stop(E) -> request_reply(E, stop). %! Use ukeysort on Pid to get a list of all process that need to be send stop
@@ -257,12 +282,13 @@ setup() ->
     {ok, E} = emoji:start([]),
     ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
     ok = emoji:new_shortcode(E, "poop", <<"\xF0\x9F\x92\xA9">>),
-    ok = emoji:new_shortcode(E, "poop", <<"\xF0\x9F\x92\xA9">>),
-    ok = emoji:new_shortcode(E, "poop", <<"\xF0\x9F\x92\xA9">>),
     ok = emoji:alias(E, "poop", "hankey"),
     ok = emoji:analytics(E, "smiley", fun(_, N) -> N+1 end, "Counter", 0),
     ok = emoji:analytics(E, "hankey", fun hit/2, "Counter", 0),
     ok = emoji:analytics(E, "poop", fun accessed/2, "Accessed", []),
+    emoji:remove_analytics(E, "poop", "Accessed"),
+    emoji:remove_analytics(E, "poop", "Accessed"),
+    emoji:lookup(E, "poop"),
     E.
 
 print_analytics(Stats) ->
