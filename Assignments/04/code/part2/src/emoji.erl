@@ -9,7 +9,7 @@
 -type emoji() :: binary().
 -type analytic_fun(State) :: fun((shortcode(), State) -> State).
 -type emojiProcessMap() :: [{shortcode(), pid()}].
--type analyticsProcessMap() :: [{label(), fun(), any()}].
+-type analyticsMap() :: [{label(), fun(), any()}].
 -type emojiMap() :: [{shortcode(), emoji()}].
 
 
@@ -151,7 +151,7 @@ runAnalyticsFun(Fun, Short, Value) ->
   NewValue.
 
 % Micro server for a single shortcode and its registered aliases
--spec loopEmoji({emoji(), analyticsProcessMap()}) -> any().
+-spec loopEmoji({emoji(), analyticsMap()}) -> any().
 loopEmoji(State) -> 
   {Emoji, AnalMap} = State,
   receive
