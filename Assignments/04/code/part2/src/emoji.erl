@@ -9,7 +9,7 @@
 -type emoji() :: binary().
 -type analytic_fun(State) :: fun((shortcode(), State) -> State).
 -type emojiProcessMap() :: [{shortcode(), pid()}].
--type analyticsProcessMap() :: [{label(), pid(), any()}].
+-type analyticsProcessMap() :: [{label(), fun(), any()}].
 -type emojiMap() :: [{shortcode(), emoji()}].
 
 
@@ -37,9 +37,9 @@ spawnEmojiServers(EMap) ->
 spawnEmojiServer(Emo) -> 
     spawn(fun () -> loopEmoji({Emo, []}) end).
 
--spec spawnAnalyticsServer(analytic_fun(_)) -> pid().
-spawnAnalyticsServer({Fun, State}) -> 
-    spawn(fun () -> loopAnalytics({Fun, State}) end).
+% -spec spawnAnalyticsServer(analytic_fun(_)) -> pid().
+% spawnAnalyticsServer({Fun, State}) -> 
+%     spawn(fun () -> loopAnalytics({Fun, State}) end).
 
 % Main emojo server
 -spec loopServer(emojiProcessMap()) -> any().
@@ -140,6 +140,23 @@ loopServer(State) -> % ! Make seperation of concerns into auxilary functions
       end
   end.
 
+runAnalyticsFun(Fun, Short, Value) ->
+  Me = self(),
+  process_flag(trap_exit, true),
+  Worker = spawn_link(fun()->
+    NewVal = Fun(Short, Value),
+    Me ! {self(), NewVal}
+  end),
+  NewValue = receive
+    {Worker, NewVal} -> 
+      io:fwrite("Analytic function success~n"),
+      NewVal;
+    {'EXIT', Worker, Reason} -> 
+      io:fwrite("Analytic function throw~n"),
+      Value
+  end,
+  NewValue.
+
 % Micro server for a single shortcode and its registered aliases
 -spec loopEmoji({emoji(), analyticsProcessMap()}) -> any().
 loopEmoji(State) -> 
@@ -147,88 +164,71 @@ loopEmoji(State) ->
   receive
     {_From, delete} -> delete;
     {remove_analytics, Label} ->
-      Analytics = lists:keysearch(Label, 1, AnalMap),
-      case Analytics of
-        false -> loopEmoji(State);
-        {value, {_ALabel, Pid, _AState}} ->
-          Pid ! remove_analytics,
-          NewAnalMap = lists:keydelete(Label, 1, AnalMap),
-          loopEmoji({Emoji, NewAnalMap})
-      end;
+      NewAnalMap = lists:keydelete(Label, 1, AnalMap),
+      loopEmoji({Emoji, NewAnalMap});
     {From, Ref, stop} ->
       io:fwrite("Stopping loopEmoji~n"),
-      lists:foreach(fun(Elem) -> 
-          {_ALabel, Pid, _AState} = Elem,   
-          request_reply(Pid, stop)
-        end, AnalMap),
       From ! {Ref, ok};
-    %   % Update most recent state of analytic function
-    {From, {analytic_completed, Value}} ->
-      NewAnalMap = lists:map(fun (Elem) -> 
-          {ALabel, APid, AState} = Elem,
-          if
-            APid == From -> {ALabel, APid, Value};
-            true -> {ALabel, APid, AState}
-          end
-        end, AnalMap),
-      loopEmoji({Emoji, NewAnalMap});
     % * Lookup emoji
     {From, Ref, {get_emoji, Short}} -> 
+      NewAnalMap = lists:map(fun(Elem) -> 
+        {ALabel, Fun, AnalValue} = Elem,
+        {ALabel, Fun, runAnalyticsFun(Fun, Short, AnalValue)}
+      end, AnalMap),
       Res = {ok, Emoji},
       From ! {Ref, Res},
-      lists:foreach(fun(Elem) -> 
-          {_ALabel, Pid, _AState} = Elem,
-          Pid ! {self(), {run, Short}}
-        end, AnalMap),
-      loopEmoji(State);
+      loopEmoji({Emoji, NewAnalMap});
     {From, Ref, get_analytics} ->
       Stats = lists:map(fun(Elem) -> 
-          {ALabel, _APid, AState} = Elem,
+          {ALabel, _AFun, AState} = Elem,
           {ALabel, AState}
         end, AnalMap),
       From ! {Ref, {ok, Stats}},
       loopEmoji(State);
     % * Registers a new analytics function
-    {From, Ref, {analytics, _Short, Fun, Label, Init}} ->
+    {From, Ref, {analytics, _, Fun, Label, Init}} ->
       % Check for duplicate Labels
       Res = lists:keysearch(Label, 1, AnalMap),
       case Res of
-        {value, {_Label, _Pid, _State}} ->
-          From ! {Ref, {error, "This analytics label already exists: " ++ Label}};
+        {value, {_, _, _}} ->
+          From ! {Ref, {error, "This analytics label already exists: " ++ Label}},
+          loopEmoji(State);
         false ->
-          Anal = spawnAnalyticsServer({Fun, Init}),
-          NewState = {Emoji, [{Label, Anal, Init} | AnalMap]},
+          NewState = {Emoji, [{Label, Fun, Init} | AnalMap]},
           From ! {Ref, ok},
           loopEmoji(NewState)
       end
   end.
 
 % Micro server for a single analytics function for a specic shortcode and its registered aliases
--spec loopAnalytics(analytic_fun(_)) -> any().
-loopAnalytics(State) ->
-  {Fun, Value} = State,
-  receive
-    remove_analytics -> 
-      io:fwrite("Deleting loopAnalytics~n"),
-      ok;
-    {From, Ref, stop} -> 
-      io:fwrite("Stopping loopAnalytics~n"),
-      From ! {Ref, ok};
-    {From, _Ref, get_analytics} ->
-      From ! {ok, Value},
-      loopAnalytics({Fun, Value});
-    {From, {run, Short}} -> 
-      NewValue = Fun(Short, Value), %! Should be performed in its own process or similar
-      From ! {self(), {analytic_completed, NewValue}},
-      loopAnalytics({Fun, NewValue});
-    {'EXIT', _Pid, _Reason} -> 
-      not_implemented
-  end.
-
-% handleAnalytics(Request, State) ->
-%   case Request of
-%     stop ->
-%     get_analytics ->
+% -spec loopAnalytics(analytic_fun(_)) -> any().
+% loopAnalytics(State) ->
+%   {Fun, Value} = State,
+%   receive
+%     remove_analytics -> 
+%       io:fwrite("Deleting loopAnalytics~n"),
+%       ok;
+%     {From, Ref, stop} -> 
+%       io:fwrite("Stopping loopAnalytics~n"),
+%       From ! {Ref, ok};
+%     {From, {run, Short}} -> 
+%       Me = self(),
+%       process_flag(trap_exit, true),
+%       Worker=spawn_link(fun()->
+%         NewVal = Fun(Short, Value),
+%         Me ! {self(), NewVal}
+%       end),
+%       NewValue = receive
+%         {Worker, NewVal} -> 
+%           io:fwrite("Analytic function success~n"),
+%           NewVal;
+%         {'EXIT', Worker, Reason} -> 
+%           io:fwrite("Analytic function throw~n"),
+%           Value
+%       end,
+%       From ! {self(), {analytic_completed, NewValue}},
+%       loopAnalytics({Fun, NewValue})
+%   end.
 
 -spec request_reply(pid(), any()) -> any().
 request_reply(Pid, Request) ->
@@ -283,12 +283,13 @@ setup() ->
     ok = emoji:new_shortcode(E, "smiley", <<240,159,152,131>>),
     ok = emoji:new_shortcode(E, "poop", <<"\xF0\x9F\x92\xA9">>),
     ok = emoji:alias(E, "poop", "hankey"),
-    ok = emoji:analytics(E, "smiley", fun(_, N) -> N+1 end, "Counter", 0),
-    ok = emoji:analytics(E, "hankey", fun hit/2, "Counter", 0),
-    ok = emoji:analytics(E, "poop", fun accessed/2, "Accessed", []),
-    emoji:remove_analytics(E, "poop", "Accessed"),
-    emoji:remove_analytics(E, "poop", "Accessed"),
-    emoji:lookup(E, "poop"),
+    ok = emoji:analytics(E, "poop", fun(_, N) -> N+1 end, "Counter", 0),
+    %ok = emoji:analytics(E, "hankey", fun hit/2, "Counter", 0),
+    %ok = emoji:analytics(E, "poop", fun accessed/2, "Accessed", []),
+    %ok = emoji:analytics(E, "poop", fun(S, _) -> throw(S) end, "Throw", []),
+    %emoji:remove_analytics(E, "poop", "Accessed"),
+    %emoji:remove_analytics(E, "poop", "Accessed"),
+    %emoji:lookup(E, "poop"),
     E.
 
 print_analytics(Stats) ->

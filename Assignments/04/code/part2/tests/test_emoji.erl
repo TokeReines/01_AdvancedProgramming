@@ -15,6 +15,7 @@ testsuite() ->
        , test_delete()
        , test_lookup()
        , test_analytics()
+       , test_lookup_alias_get_analytics()
        , test_lookup_get_analytics()
        , test_remove_analytics()
        , test_stop()
@@ -95,6 +96,19 @@ test_lookup_get_analytics() ->
        {ok, E} = emoji:start([{"smiley", <<240,159,152,131>>}]),
        ok = emoji:analytics(E, "smiley", fun(_, N) -> N+1 end, "Counter", 0),
        {ok, _} = emoji:lookup(E, "smiley"),
+       {ok, _} = emoji:lookup(E, "smiley"),
+       {ok, _} = emoji:lookup(E, "smiley"),
+      %  {ok, Stat} = emoji:get_analytics(E, "Counter"),
+       ?assertEqual({ok,[{"Counter",3}]}, emoji:get_analytics(E, "smiley"))
+     end }.
+
+test_lookup_alias_get_analytics() ->
+  {"Looking up an emoji, runs the analytics functions",
+     fun () ->
+      {ok, E} = emoji:start([{"smiley", <<240,159,152,131>>}]),       
+      ok = emoji:alias(E, "smiley", "smiley1"),
+      ok = emoji:analytics(E, "smiley1", fun(_, N) -> N+1 end, "Counter", 0),
+      {ok, _} = emoji:lookup(E, "smiley"),
       %  {ok, Stat} = emoji:get_analytics(E, "Counter"),
        ?assertEqual({ok,[{"Counter",1}]}, emoji:get_analytics(E, "smiley"))
      end }.
