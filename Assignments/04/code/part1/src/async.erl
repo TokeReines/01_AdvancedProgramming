@@ -2,42 +2,42 @@
 
 -export([loop/1 ,new/2, wait/1, poll/1, setup/0]).
 
+
 loop(State) ->
     {Worker, Result} = State,
     receive 
         {new, {Fun, Arg}} -> 
+            io:fwrite("New~n"),
             Me = self(),
             process_flag(trap_exit, true),
-            Work = spawn_link (fun() ->
+            spawn_link (fun() ->
                 Res = Fun(Arg),
                 Me ! {finished, Res},
                 receive
                     From -> From ! Res
                 end
             end),
-            {Result, Exception} = receive
-                {Worker, NewVal} -> 
-                io:fwrite("Analytic function success~n"),
-                {NewVal, Ex};
-                {'EXIT', Worker, Reason} -> 
-                io:fwrite("Analytic function throw~n"),
-                Reason
-            end,
-            loop({Work, Result, Exception});
+            loop(State);
+        {finished, Result} -> 
+            io:fwrite("Fun finished~n"),
+            loop({Worker, Result});
         {wait, From} -> 
+            io:fwrite("Waiting~n"),
             case Result of
-                {exceptions} ->  From ! {exceptions, Exception};
+                {exception, Reason} ->  From ! {exception, Reason};
                 _ -> Worker ! From
             end,            
             loop(State);
         {poll, From} -> 
+            io:fwrite("Polling~n"),
             case Result of
-                {nothing, nothing} -> From ! nothing;
-                {exception, Reason} ->  From ! {exception, Reason};
-                _ -> From ! {ok, Result}
+                nothing -> io:fwrite("nothing~n"), From ! nothing;
+                {exception, Reason} -> io:fwrite("exception~n"), From ! {exception, Reason};
+                true -> io:fwrite("basecase~n"), From ! {ok, Result}
             end,
             loop(State);
         {'EXIT', Worker, Reason} -> 
+            io:fwrite("Process died~n"),
             loop({Worker, {exception, Reason}})
     end.
     
@@ -67,4 +67,5 @@ poll(Aid) ->
     end.
 
 setup() ->
-    E4 = async:new(fun(N) -> 1+1, throw(true) end, 1). 
+    E4 = async:new(fun(N) ->N+1 end, 1),
+    async:poll(E4).
