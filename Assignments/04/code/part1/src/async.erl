@@ -8,9 +8,10 @@ loop(State) ->
     receive 
         {new, {Fun, Arg}} -> 
             process_flag(trap_exit, true),
+            Me = self(),
             Work = spawn_link (fun() ->
                 Res = Fun(Arg),
-                self() ! {finished, Res},
+                Me ! {finished, Res},
                 receive
                     From -> From ! 5
                 end
