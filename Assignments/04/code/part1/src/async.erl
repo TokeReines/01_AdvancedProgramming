@@ -7,7 +7,6 @@ loop(State) ->
     {Worker, Result} = State,
     receive 
         {new, {Fun, Arg}} -> 
-            io:fwrite("New~n"),
             Me = self(),
             process_flag(trap_exit, true),
             NewWorker = spawn_link (fun() ->
@@ -19,10 +18,8 @@ loop(State) ->
             end),
             loop({NewWorker, Result});
         {finished, Res} -> 
-            io:fwrite("Finished~n"),
             loop({Worker, Res});
         {wait, From} -> 
-            io:fwrite("Wait~n"),
             case Result of
                 nothing ->  Worker ! From;
                 {exception, Reason} ->  From ! {exception, Reason};
@@ -30,7 +27,6 @@ loop(State) ->
             end,            
             loop(State);
         {poll, From} -> 
-            io:fwrite("Poll~n"),
             case Result of
                 nothing -> From ! nothing;
                 {exception, Reason} -> From ! {exception, Reason};
@@ -38,7 +34,6 @@ loop(State) ->
             end,
             loop(State);
         {'EXIT', Worker, Reason} -> 
-            io:fwrite("Exit~n"),
             loop({Worker, {exception, Reason}})
     end.
 

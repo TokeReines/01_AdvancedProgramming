@@ -367,7 +367,7 @@ test_start_server_medium() ->
 test_start_server_with_duplicate_shortcode() -> 
   {"Start server with non-unique shortcodes",
     fun () ->
-      ?assertMatch({error, _}, emoji:start([{"+1", <<"👍️"/utf8>>}, {"+1", <<"👍️"/utf8>>}]))
+      ?assertMatch({error, _}, emoji:start([{"-1", <<240,159,145,142,240,159,143,189>>}, {"-1", <<240,159,145,142,240,159,143,189>>}]))
   end }.
 
 test_duplicate_shortcode_smiley() ->
@@ -387,5 +387,5 @@ test_register_throw() ->
       {ok, _} = emoji:lookup(E, "smiley"),
       {ok, _} = emoji:lookup(E, "smiley"),
       {ok, _} = emoji:lookup(E, "smiley"),
-      ?assertMatch({ok, [{"Throw", []},{"Counter", 1}]}, emoji:get_analytics(E, "smiley"))
+      ?assertMatch({ok, [{"Throw", []},{"Counter", 3}]}, emoji:get_analytics(E, "smiley"))
   end }.
