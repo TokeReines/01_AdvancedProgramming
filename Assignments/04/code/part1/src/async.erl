@@ -1,6 +1,6 @@
 -module(async).
 
--export([loop/1 ,new/2, wait/1, poll/1, funfun/0]).
+-export([loop/1 ,new/2, wait/1, poll/1]).
 
 
 loop(State) ->
