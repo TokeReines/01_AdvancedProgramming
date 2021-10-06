@@ -389,12 +389,3 @@ test_register_throw() ->
       {ok, _} = emoji:lookup(E, "smiley"),
       ?assertMatch({ok, [{"Throw", []},{"Counter", 1}]}, emoji:get_analytics(E, "smiley"))
   end }.
-
-% c("../src/emoji.erl").
-% c(test_emoji).
-% c(someemoji).
-% test_emoji:test_all().
-% 
-% c("src/emoji.erl").
-% c("tests/someemoji.erl").
-% c("tests/test_emoji.erl").
