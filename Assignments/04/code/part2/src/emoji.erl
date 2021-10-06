@@ -39,7 +39,7 @@ spawnEmojiServer(Emo) ->
 
 % Main emojo server
 -spec loopServer(emojiProcessMap()) -> any().
-loopServer(State) -> % ! Make seperation of concerns into auxilary functions
+loopServer(State) -> % TODO Make seperation of concerns into auxilary functions
   receive
     {remove_analytics, Short, Label} ->
       case lists:keysearch(Short, 1, State) of
@@ -65,10 +65,8 @@ loopServer(State) -> % ! Make seperation of concerns into auxilary functions
     {From, Ref, {analytics, Short, Fun, Label, Init}} ->
       Res = lists:keysearch(Short, 1, State),
       case Res of
-        % Emoji isn't registered 
         false -> 
           From ! {Ref, {error, "No shortcode"}};
-        % Attach analytic function to emoji process
         {value, {_Shortcode, Pid}} ->
           Pid ! {From, Ref, {analytics, Short, Fun, Label, Init}}
       end,
@@ -77,10 +75,8 @@ loopServer(State) -> % ! Make seperation of concerns into auxilary functions
     {From, Ref, {lookup, Short}} ->
       Res = lists:keysearch(Short, 1, State),
       case Res of
-        % Emoji isn't registered 
         false -> 
           From ! {Ref, no_emoji};
-        % Ask emoji process to send emoji
         {value, {_Shortcode, Pid}} ->
           Pid ! {From, Ref, {get_emoji, Short}}
       end,
@@ -88,13 +84,11 @@ loopServer(State) -> % ! Make seperation of concerns into auxilary functions
     % * Register new short cpde
     {From, Ref, {new_shortcode, Short, Emo}} ->
       case isnewshortcode(Short, State) of
-        % Create a new emoji process and update the state of the main server
         true ->
           Pid = spawnEmojiServer(Emo),
-          {NewState, Res} = {State ++ [{Short, Pid}], ok}, % ! List can also be made with [ {Short, Pid} | State]
+          {NewState, Res} = {[{Short, Pid} | State], ok},
           From ! {Ref, Res},
           loopServer(NewState);
-        % Shortcode is already registered
         false ->
           From ! {Ref, {error, "Shortcode already exists"}},
           loopServer(State)
@@ -103,16 +97,13 @@ loopServer(State) -> % ! Make seperation of concerns into auxilary functions
     {delete, Short} ->
       Emoji = lists:keysearch(Short, 1, State),
       case Emoji of
-        % Emoji doesn't exist
         false -> loopServer(State);
-        % Emoji exists, send stop to emoji process and remove it from main emoji server
         {value, {_Shortcode, Pid}} ->
           Pid ! delete,
           NewState = lists:filter(fun(Elem) -> 
             {_, Eid} = Elem,
             Eid /= Pid
           end, State),
-          % NewState = lists:keydelete(Short, 1, State),
           loopServer(NewState)
       end;
     % * Register a new alias
@@ -171,7 +162,7 @@ loopEmoji(State) ->
       From ! {Ref, Res},
       loopEmoji({Emoji, NewAnalMap});
     {From, Ref, get_analytics} ->
-      % ! Should we return an error if there is no functions registered
+      % ? Should we return an error if there is no functions registered?
       Stats = lists:map(fun(Elem) -> 
           {ALabel, _AFun, AState} = Elem,
           {ALabel, AState}
@@ -180,7 +171,6 @@ loopEmoji(State) ->
       loopEmoji(State);
     % * Registers a new analytics function
     {From, Ref, {analytics, _, Fun, Label, Init}} ->
-      % Check for duplicate Labels
       Res = lists:keysearch(Label, 1, AnalMap),
       case Res of
         {value, {_, _, _}} ->
