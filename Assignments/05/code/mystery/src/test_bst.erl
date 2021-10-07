@@ -289,6 +289,7 @@ prop_insert_model() ->
                   
 %%% ? -- delete
 prop_delete_model() ->
+<<<<<<< HEAD
     ?FORALL({K, T}, {atom_key(), bst(atom_key(), int_value())},
             equals(model(delete(K, T)), delete_key(K, model(T)))).
 
@@ -307,6 +308,15 @@ prop_find_model() ->
             equals(find(K, T), lists:keyfind(K, 1, model(T)))
         )
     ).
+=======
+    ?FORALL(T, bst(atom_key(), int_value()),
+        ?FORALL(K, key_from(T),
+                equals(model(delete_key(K, T)),
+                    delete_key(K, model(T)))
+        )
+    ).
+%%% ? -- union
+>>>>>>> c1084dd (Started working on model)
 
 
 
