@@ -1,0 +1,142 @@
+*** Submission ***
+
++ No packaging/building issues.
+
++ No significant compiler warnings or style hints from OnlineTA. Good!
+
++ You have listings of your code as an appendix in the report. Good!
+
++ You have included a timesheet. Good!
+
+*** Warmup ***
+
++ All our tests pass. Good job!
+
++ Code looks OK.
+
+  + In RWSE, it's nice that you exploit the return/>>= of the
+    `Either ErrorData` monad in defining the monad operations for
+    RWSE. That way, if we were to replace, e.g., `Either ErrorData` with
+    `Maybe`, you definitions will still work without change.
+
+*** Main task: code ***
+
+= Comp monad instance (return, >>=): OK.
+
+  - You could've avoided the inner case by exploiting the fact that
+    Either is also a monad, and we can use do-notation.
+
++ Comp monad operations (abort, look, withBinding, output): fine.
+
+  + And you are only using those operations in the rest of the program
+    (except for a permitted runComp in `execute`, to finally get out
+    of the monad). Very good! If the definition of Comp were to
+    change, you'll only need to update the definitions here, not in
+    other parts of your code.
+
++ Auxiliary functions (truthy, operate, apply): fine
+
+  = You apparently implemented the simple printer variant (i.e., never
+    quoting string constants, even inside lists). That's perfectly
+    fine, as long as you explicitly state it as a deliberate design
+    choice in the report.
+
+- Main interpreter functions (eval, exec, execute): problems
+
+  - For Compr e [], you should yield an empty ListVal, not evaluate
+    e. It seems that you are trying to use this as a base case in
+    your recursion on Compr e (cc:ccs).  That is a valid base case, but
+    you'll need to put that in a sparate function. Doing so might also
+    incidentally resolve the following issue.
+
+  - You can only handle a single list in a list comprehension. This is
+    a substantial limitation. Part of the problem is that you simply
+    wrap the result from a mapM over ccs in a ListVal. However, that
+    value itself is a list of lists, if there are more CCFor's in ccs!
+    Hint 1: at some point, you need to concatenate those lists.
+    Hint 2: Conditionals in compr, are really filtering expressions.
+
+  = In your implementation of comprehensions, consider whether you are
+    converting intermediate result of type `[Value]` too quickly to
+    `ListVal`-tagged Boa `Value`s, which you then have to immediately
+    unwrap again. Would it be possible to only do the
+    `ListVal`-tagging at the end, when you are returning the final
+    result of the comprehension?
+
+  - You don't need a `do` ahead of a single-line monadic action.
+
+*** Main task: testing ***
+
++ Tests are automated and runnable by `stack test`. Good!
+
+  + Very comprehensive!
+
+  + Both positive and negative tests (where applicable).
+
+  - Some of your "expected" results in test cases are overly long or
+    complicated, and it's not clear how they were obtained.
+
+    Note that the expected result in a test case can itself
+    be computed rather than hand-written. For example, if you
+    are testing Boa comprehensions, instead of something like
+    `... @?= ListVal [IntVal 1, IntVal 4, IntVal 9, ..., IntVal 100]`,
+    it's much preferable to write it as
+    `... @?= ListVal [IntVal (i*i) | i <- [1..10]]`.
+
+- Some of your tests fail!
+
+*** Main task: report ***
+
+  = Rather minimal overview of main design/implementation choices.
+
+    = While the assignment text does not ask you to prove that your
+      "instance Monad Comp" actually satisfies the monad laws, it's
+      still considered good style to at least consider the issue
+      in the report, and mention any reasons you have for believing
+      that you have actually defined a "real" monad, and not just
+      some functions with the correct types.
+
+   = At least a brief discussion of how you implemented both the
+     `range` and `print` functionality of `apply` would have been
+     appropriate.
+
+   - You say very little about how you implemented (or your ideas for
+     implementing) comprehensions in `eval`. That's one of the key
+     design/implementation choices you need to make in this
+     assignment, and you were specifically asked to discuss it in the
+     report.
+
+  + Very comprehensive and well justified assessment, with a clear
+    explanation of testing strategy and results.
+
+    + You have divided the assessment up into the suggested
+      categories. Good!
+
+    + Completeness: fine
+
+      = You didn't implement everything, but at least it's clear from
+        your report what you did and didn't do,
+
+        + And your ideas for the missing parts generally make sense.
+
+  + Correctness: fine
+
+    + You have some minor correctness issues, but those are clearly
+      identified in the assessment. Good!
+
+  = Efficiency: OK
+
+      + Your code seems to be largely as efficient as one could expect.
+
+  + Robustness: fine
+
+    + Robustness isn't really a big concern for this assignment, since
+      there isn't much opportunity to invoke the required functions on
+      arguments for which their behavior is not specified.
+
+  + Maintainability: fine
+
+*** Overall score: 4 / 6 ***
+
+  Good solution overall, with a clearly missing implementation of
+  multiple lists in list comprehensions.

@@ -6,3 +6,6 @@ boa.cabal
 *.cabal
 report.pdf
 code.zip
+*.beam
+async.beam
+.vscode/
