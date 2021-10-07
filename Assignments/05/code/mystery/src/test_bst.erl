@@ -107,13 +107,18 @@ prop_union_post() ->
 % TODO: Test for size of T != size of T' after insert/delete in same manner as above, taking into account whether or not the key was present or not.  
 
 %%% ! -- metamorphic properties
+obs_equals(T1, T2) ->
+     eqc:equals(to_sorted_list(T1), to_sorted_list(T2)).
 
+%%% ? -- Insert
+%%% ? -- size/insert
 %% the size is larger after an insert
 prop_size_insert() ->
     % ∀ k v t. size (insert k v t) >= size t
     ?FORALL({K, V, T}, {atom_key(), int_value(), bst(atom_key(), int_value())},
             bst:size(insert(K, V, T)) >= bst:size(T)).
 
+%%% ? -- insert
 % Inserting an existing key results in a tree identical to the original tree, with an updated value
 prop_insert_existing() ->
     ?FORALL({T, V}, 
@@ -122,9 +127,7 @@ prop_insert_existing() ->
                     key_from(T), 
                     eqc:equal(keys(T), keys(insert(K, V, T))))).
 
-obs_equals(T1, T2) ->
-     eqc:equals(to_sorted_list(T1), to_sorted_list(T2)).
-
+%%% ? -- insert/insert
 % Inserting 2 different keys should be commutative, and the order of inserts shouldn't matter. 
 % Inserting 2 identical keys, should result in the same tree as only inserting it once.
 prop_insert_insert() ->
@@ -136,11 +139,14 @@ prop_insert_insert() ->
                            false -> insert(K2, V2, insert(K1, V1, T))
                        end)).
 
+%%% ? Delete
+%%% ? -- size/delete
 prop_size_delete() ->
-  % ! ∀ k t. size (delete k t) =< size t
+  % ∀ k t. size (delete k t) =< size t
   ?FORALL({K,T}, {atom_key(), bst(atom_key(), int_value())},
           bst:size(delete(K, T)) =< bst:size(T)).
 
+%%% ? -- delete/delete
 % Deleting 2 different keys should be commutative, and the order of deletions shouldn't matter. 
 % Deleting 2 identical keys, should result in the same tree as only deleting it once.
 prop_delete_delete() ->
@@ -152,6 +158,7 @@ prop_delete_delete() ->
                            false -> delete(K2, delete(K1, T))
                        end)).
 
+%%% ? Union
 % The union of two trees should result in a size equal to or greater than the largest of the two.
 prop_size_union() ->
     ?FORALL({T1, T2},
@@ -167,7 +174,7 @@ prop_union_union() ->
 % TODO: Is obs_equals(T1, bst:union(T1, T1)) relevant?
 % TODO: Is bst:size(T1) == bst:size(bst:union(T1, T1)) relevant?
 
-%%% -- Model based properties
+%%% ! -- Model based properties
 model(T) -> to_sorted_list(T).
 
 
