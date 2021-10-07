@@ -147,6 +147,7 @@ prop_size_delete() ->
           bst:size(delete(K, T)) =< bst:size(T)).
 
 %%% ? -- delete/delete
+%%% TODO: Use key_from(T) and frequency to get valid keys or invalid keys
 % Deleting 2 different keys should be commutative, and the order of deletions shouldn't matter. 
 % Deleting 2 identical keys, should result in the same tree as only deleting it once.
 prop_delete_delete() ->
@@ -177,11 +178,20 @@ prop_union_union() ->
 %%% ! -- Model based properties
 model(T) -> to_sorted_list(T).
 
-
+%%% ? -- Insert 
 prop_insert_model() ->
     ?FORALL({K, V, T}, {atom_key(), int_value(), bst(atom_key(), int_value())},
             equals(model(insert(K, V, T)),
                    sorted_insert(K, V, delete_key(K, model(T))))).
+
+%%% ? -- find
+%%% ? -- empty
+%%% ? -- delete
+prop_delete_model() ->
+    ?FORALL({K, V, T}, {atom_key(), int_value(), bst(atom_key(), int_value())},
+            equals(model(delete_key(K, T)),
+                   delete_key(K, sorted_insert(K, V, model(T))))).
+%%% ? -- union
 
 
 -spec delete_key(Key, [{Key, Value}]) -> [{Key, Value}].
