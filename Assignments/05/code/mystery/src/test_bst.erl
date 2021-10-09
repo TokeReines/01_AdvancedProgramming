@@ -61,26 +61,26 @@ int_value() -> eqc_gen:int().
 prop_arbitrary_valid() ->
     ?FORALL(T, 
             bst_symbolic_frequency(atom_key(), int_value()),
-            {call, bst, valid, T}).
+            valid(eval(T))).
 
 % if we insert into a valid tree it stays valid, meaning that
 % keys is still less/greater then the current tree with respect to them being left/right sub trees 
 prop_insert_valid() ->
     ?FORALL({K, V, T},
-            {atom_key(), int_value(), bst(atom_key(), int_value())},
-            valid (insert(K, V, T))).
+            {atom_key(), int_value(), bst_symbolic_frequency(atom_key(), int_value())},
+            valid (insert(K, V, eval(T)))).
 
 prop_empty_valid() -> 
     ?LET(T, empty(), valid(T)).
 
 prop_delete_valid() ->
-    ?FORALL(T, bst(atom_key(), int_value()),
-        ?FORALL(K, key_from(T), valid (delete(K,T)))).
+    ?FORALL(T, bst_symbolic_frequency(atom_key(), int_value()),
+        ?FORALL(K, key_from(T), valid (delete(K,eval(T))))).
 
 prop_union_valid() ->
     ?FORALL({T1, T2}, 
-            {bst(atom_key(), int_value()), bst(atom_key(), int_value())}, 
-            valid (union(T1, T2))).
+            {bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value())}, 
+            valid (union(eval(T1), eval(T2)))).
 
 %%% ! -- postcondition properties
 %% the size is larger after an insert   
@@ -289,35 +289,17 @@ prop_insert_model() ->
                   
 %%% ? -- delete
 prop_delete_model() ->
-<<<<<<< HEAD
-    ?FORALL({K, T}, {atom_key(), bst(atom_key(), int_value())},
-            equals(model(delete(K, T)), delete_key(K, model(T)))).
-
-%%% ? - Union Model
-prop_union_model() ->
-    ?FORALL({T1, T2}, 
-            {bst(atom_key(), int_value()), bst(atom_key(), int_value())}, 
-            equals(model(union(T1,T2)), union_model(model(T1), model(T2)))).
-
-%%% ? -- find
-prop_find_model() ->
-    ?FORALL(T,
-        bst(atom_key(), int_value()),
-        ?LET(K, 
-            key_from(T),
-            equals(find(K, T), lists:keyfind(K, 1, model(T)))
-        )
-    ).
-=======
     ?FORALL(T, bst(atom_key(), int_value()),
         ?FORALL(K, key_from(T),
-                equals(model(delete_key(K, T)),
-                    delete_key(K, model(T)))
+                equals(model(delete(K, T)), delete_key(K, model(T)))
         )
     ).
-%%% ? -- union
->>>>>>> c1084dd (Started working on model)
 
+%%% ? -- union
+prop_union_model() ->
+    ?FORALL({T1, T2}, 
+        {bst(atom_key(), int_value()), bst(atom_key(), int_value())},
+        equals(model(union(T1, T2)), union_model(model(T1), model(T2)))).
 
 
 
