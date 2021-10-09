@@ -13,9 +13,26 @@
 %%% A non-symbolic generator for bst, parameterised by key and value generators
 bst(Key, Value) ->
     ?LET(KVS, eqc_gen:list({Key, Value}),
-         lists:foldl(fun({K,V}, T) -> insert(K, V, T) end,
+         lists:foldl(fun({K, V}, T) -> insert(K, V, T) end,
                      empty(),
                      KVS)).
+
+bst_sym() -> 
+    ?LAZY(
+      oneof([{call, bst, empty, []},
+            ?LET(T, bst_sym(), 
+            {call, bst, insert, [atom_key(), int_value(), T]})])
+    ).
+
+%% A symbolic generator for bst, parameterised by key and value generators
+bst_symbolic_frequency(Key, Value) ->
+    frequency([
+        {1, {call, bst, empty, []}},
+        {4, ?LET(KVS, eqc_gen:list({Key, Value}),
+                lists:foldl(fun({K, V}, T) -> {call, bst, insert, [K, V, T]} end,
+                            {call, bst, empty, []},
+                            KVS))}
+    ]).
 
 % example key and value generators
 int_key() -> eqc_gen:int().
@@ -43,8 +60,8 @@ int_value() -> eqc_gen:int().
 % All key in the right sub tree is greater then the key in the current tree
 prop_arbitrary_valid() ->
     ?FORALL(T, 
-            bst(atom_key(), int_value()),
-            valid(T)).
+            bst_symbolic_frequency(atom_key(), int_value()),
+            {call, bst, valid, T}).
 
 % if we insert into a valid tree it stays valid, meaning that
 % keys is still less/greater then the current tree with respect to them being left/right sub trees 
