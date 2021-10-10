@@ -14,26 +14,26 @@ import qualified ExprEval as E
 instance Arbitrary Expr where
    arbitrary = expr
 
-instance Arbitrary Op where
-   arbitrary = oneof [Plus, Minus]
+opGen :: Gen Op
+opGen = elements [Plus, Minus, Times]
 
--- instance Arbitrary Ident where
---    arbitrary = oneof [Plus, Minus, Times]
+identGen :: Gen String
+identGen = elements ["x", "y", "z", "bananaBread"]
  
 prop_eval_simplify :: Expr -> Property
-prop_eval_simplify x = x === x
+prop_eval_simplify x = E.evalTop(x) === E.evalTop(E.simplify(x))
 
--- opOneof = oneof [Plus, Minus, Times]
-
+-- ! Line 29 in ExprEval has + instead of -
 expr = sized exprN
 exprN 0 = fmap Const arbitrary
 exprN n = oneof [ fmap Const arbitrary,
-                  fmap Var arbitrary,
-                  Oper Plus <$> subexpr <*> subexpr,
-                  Oper Minus <$> subexpr <*> subexpr,
-                  Oper Times <$> subexpr <*> subexpr,
-                  Oper asd <$> subexpr <*> subexpr
-                  -- Let Ident <$> subexpr <*> subexpr 
-                     ]
+                  Var <$> identGen,
+                  Oper <$> opGen <*> subexpr <*> subexpr,
+                  Let <$> identGen <*> subexpr <*> subexpr]
               where subexpr = exprN (n `div` 2)
-                    asd = oneof [Plus, Minus]
+
+-- alrite -> i morgen/tirsdag:
+-- Færdiggør haskell :P
+-- Shrinking (også i erlang)
+-- Test på version (erlang)
+-- Evt prop measure  - er det stats? 👍🏻 h
