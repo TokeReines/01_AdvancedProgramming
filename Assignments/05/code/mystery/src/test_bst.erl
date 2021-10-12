@@ -50,11 +50,47 @@ prop_measure() ->
         collect(bst:size(eval(T)), true)
     ).
 
+prop_measure1() ->
+  ?FORALL({T, K}, 
+      {bst_sym(atom_key(), int_value()), atom_key()},
+      collect(measure1(K, eval(T)), true)
+  ).
+
+prop_measure2() ->
+  ?FORALL({T, K}, 
+      {bst_sym(atom_key(), int_value()), atom_key()},
+      collect(measure2(K, eval(T)), true)
+  ).
+
+measure1(Key, Tree) ->
+    IsPresent = lists:any(fun(K) -> K == Key end, keys(Tree)),
+    if
+      IsPresent -> "Present";
+      true -> "absent"
+    end.
+
+measure2(Key, Tree) ->
+    T = to_sorted_list(eval(Tree)),
+    
+    Empty = T == [],
+    JustK = keys(Tree) == [Key],
+    AtStart = lists:all(fun(K) -> K >=  Key end, keys(Tree)),
+    AtEnd = lists:all(fun(K) -> K =<  Key end, keys(Tree)),
+    if 
+      Empty -> "empty";
+      JustK -> "just k";
+      AtStart -> "at start";
+      AtEnd -> "at end";
+      true -> "middle"
+    end.
+
 prop_aggregate() ->
     ?FORALL(T, 
         bst_sym(atom_key(), int_value()),
-        aggregate(call_names(eval(T)), true)
+        aggregate(call_names(T), true)
     ).
+
+
 
 %%% ===========================================================================
 %%% Invariant properties
