@@ -21,9 +21,11 @@ defaultEnv = M.fromList [("x", 0), ("y", 0), ("z", 0), ("q", 0)]
 
 prop_eval_simplify :: Expr -> Property
 -- prop_eval_simplify x = E.evalTop x === E.evalTop(E.simplify x)
+-- ! Testing let bindings with unbound variable still needs the varibles to be 
+-- ! bound when we evaluate else we get "Unknown identifier: "
+-- ! Thus we make sure to bind the variables in the environment as a precondition 
 prop_eval_simplify x = E.eval x defaultEnv === E.eval (E.simplify x) defaultEnv
 
--- Testing let bindings with unbound variable still need to be "bound" else we get "Unknown identifier: "
 
 expr = sized exprN
 exprN 0 = fmap Const arbitrary
@@ -33,8 +35,3 @@ exprN n = oneof [ fmap Const arbitrary,
                   Let <$> identGen <*> subexpr <*> subexpr]
               where subexpr = exprN (n `div` 2)
 
--- alrite -> i morgen/tirsdag:
--- Færdiggør haskell :P
--- Shrinking (også i erlang)
--- Test på version (erlang)
--- Evt prop measure  - er det stats? 👍🏻 h
