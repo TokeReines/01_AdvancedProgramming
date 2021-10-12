@@ -15,9 +15,9 @@ opGen :: Gen Op
 opGen = elements [Plus, Minus, Times]
 
 identGen :: Gen String
-identGen = elements ["x", "y", "z", "bananaBread"]
- 
-defaultEnv = M.fromList [("x", 0), ("y", 0), ("z", 0), ("bananaBread", 0)]
+identGen = elements ["x", "y", "z", "q"]
+-- Simplify doesnt use the values....
+defaultEnv = M.fromList [("x", 0), ("y", 0), ("z", 0), ("q", 0)]
 
 prop_eval_simplify :: Expr -> Property
 -- prop_eval_simplify x = E.evalTop x === E.evalTop(E.simplify x)

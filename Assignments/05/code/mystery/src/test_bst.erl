@@ -9,6 +9,9 @@
 -compile(nowarn_export_all).
 -compile(export_all).
 
+%%% ===========================================================================
+%%% Generators
+%%% ===========================================================================
 
 %%% A non-symbolic generator for bst, parameterised by key and value generators
 bst(Key, Value) ->
@@ -17,43 +20,45 @@ bst(Key, Value) ->
                      empty(),
                      KVS)).
 
-bst_sym() -> 
+%%% A symbolic generator for bst, parameterised by key and value generators
+bst_sym(Key, Value) -> 
     ?LAZY(
-        frequency([1, {call, bst, empty, []},
-            {4, ?LETSHRINK([T], [bst_sym()], 
-            {call, bst, insert, [atom_key(), int_value(), T]})}
+        frequency([{1, {call, bst, empty, []}},
+            {12, ?LETSHRINK([T], [bst_sym(Key, Value)], 
+                {call, bst, insert, [Key, Value, T]})},
+            {4, ?LETSHRINK([T], [bst_sym(Key, Value)], 
+                {call, bst, delete, [Key, T]})}
         ])
     ).
-
-%% A symbolic generator for bst, parameterised by key and value generators
-bst_symbolic_frequency(Key, Value) ->
-    frequency([
-        {1, {call, bst, empty, []}},
-        {4, ?LET(KVS, eqc_gen:list({Key, Value}),
-                lists:foldl(fun({K, V}, T) -> {call, bst, insert, [K, V, T]} end,
-                            {call, bst, empty, []},
-                            KVS))}
-    ]).
+    
 
 % example key and value generators
 int_key() -> eqc_gen:int().
 atom_key() -> eqc_gen:elements([a,b,c,d,e,f,g,h]).
 atom_key_2() -> eqc_gen:elements([i,j,k,l,m,n,o,p]).
-atom_key_different_from(K) -> 
-    NewK = atom_key(),
-      if 
-        NewK =/= K -> NewK;
-        true -> atom_key_different_from(K)
-      end. 
 key_from(T)-> eqc_gen:elements(bst:keys(eval(T))++[snowflake]).
-key_maybe_from(T, F) -> eqc_gen:frequency([
-    {1, atom_key()}, 
-    {F, key_from(T)}]
-).
 int_value() -> eqc_gen:int().
 
 
-%%% ! -- invariant properties
+%%% ===========================================================================
+%%% Generator measures
+%%% =========================================================================== 
+
+prop_measure() ->
+    ?FORALL(T, 
+        bst_sym(atom_key(), int_value()),
+        collect(bst:size(eval(T)), true)
+    ).
+
+prop_aggregate() ->
+    ?FORALL(T, 
+        bst_sym(atom_key(), int_value()),
+        aggregate(call_names(eval(T)), true)
+    ).
+
+%%% ===========================================================================
+%%% Invariant properties
+%%% =========================================================================== 
 
 % all generated bst are valid, meaning that 
 % All leafs are valid as they don't contain Key value pairs
@@ -61,22 +66,24 @@ int_value() -> eqc_gen:int().
 % All key in the right sub tree is greater then the key in the current tree
 prop_arbitrary_valid() ->
     ?FORALL(T, 
-            bst_symbolic_frequency(atom_key(), int_value()),
-            valid(eval(T))).
+            bst_sym(atom_key(), int_value()),
+            valid(eval(T))
+    ).
 
 % if we insert into a valid tree it stays valid, meaning that
 % keys is still less/greater then the current tree with respect to them being left/right sub trees 
 prop_insert_valid() ->
     ?FORALL({K, V, T},
-            {atom_key(), int_value(), bst_symbolic_frequency(atom_key(), int_value())},
-            valid (insert(K, V, eval(T)))).
+        {atom_key(), int_value(), bst_sym(atom_key(), int_value())},
+        valid(insert(K, V, eval(T)))
+    ).
 
 prop_empty_valid() -> 
     ?LET(T, empty(), valid(T)).
 
 prop_delete_valid() ->
     ?FORALL(Bst, 
-        bst_symbolic_frequency(atom_key(), int_value()),
+        bst_sym(atom_key(), int_value()),
         begin
             T = eval(Bst),
             ?FORALL(K, key_from(T), valid (delete(K, T)))
@@ -84,7 +91,7 @@ prop_delete_valid() ->
     ).
 
 prop_union_valid() ->
-    ?FORALL({Bst1, Bst2}, {bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value())},         
+    ?FORALL({Bst1, Bst2}, {bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value())},         
         begin
             T1 = eval(Bst1),
             T2 = eval(Bst2),
@@ -92,12 +99,16 @@ prop_union_valid() ->
         end
     ).
 
-%%% ! -- postcondition properties
+
+%%% ===========================================================================
+%%% Postcondition properties
+%%% =========================================================================== 
+ 
 %% the size is larger after an insert   
 prop_insert_size() ->
   % ∀ k v t. size (insert k v t) >= size t
     ?FORALL({K, V, Bst}, 
-        {atom_key(), int_value(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), int_value(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             bst:size(insert(K, V, T)) >= bst:size(T)
@@ -106,7 +117,7 @@ prop_insert_size() ->
 
 prop_find_insert_post() ->
     ?FORALL({K1, K2, V, Bst},
-        {atom_key(), atom_key(), int_value(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), atom_key(), int_value(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             eqc:equals(find(K2, insert(K1, V, T)),
@@ -121,7 +132,7 @@ prop_find_insert_post() ->
 prop_find_post_present() ->
   % ∀ k v t. find k (insert k v t) === {found, v}
     ?FORALL({K, V, Bst},
-        {atom_key(), int_value(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), int_value(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             eqc:equals(find(K, insert(K, V, T)),
@@ -132,7 +143,7 @@ prop_find_post_present() ->
 prop_find_post_absent() -> 
      % ∀ k t. find k (delete k t) === nothing
     ?FORALL({K, Bst}, 
-        {atom_key(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             eqc:equals(find(K, delete(K, T)), nothing)
@@ -142,7 +153,7 @@ prop_find_post_absent() ->
 % TODO: Add frequency - Important for int keys
 prop_find_delete_post() ->
     ?FORALL({K1, K2, Bst},
-        {atom_key(), atom_key(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), atom_key(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             eqc:equals(find(K2, delete(K1, T)),
@@ -156,7 +167,7 @@ prop_find_delete_post() ->
 % TODO: Add frequency - Important for int keys
 prop_union_post() ->
     ?FORALL({K, Bst1, Bst2},
-        {atom_key(), bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value())},
         begin
             T1 = eval(Bst1),
             T2 = eval(Bst2),
@@ -168,16 +179,17 @@ prop_union_post() ->
         end
     ).
 
-% TODO: Test for size of T != size of T' after insert/delete in same manner as above, taking into account whether or not the key was present or not.  
+%%% ===========================================================================
+%%% Metamorphic properties
+%%% =========================================================================== 
 
-%%% ! -- metamorphic properties
 obs_equals(T1, T2) ->
      eqc:equals(to_sorted_list(T1), to_sorted_list(T2)).
     
 %%% ? -- Metamorphic Insert 
 prop_insert_insert_weak() ->
   ?FORALL({K1, K2, V1, V2, Bst}, 
-        {atom_key(), atom_key_2(), int_value(), int_value(), bst_symbolic_frequency(atom_key(), int_value())}, 
+        {atom_key(), atom_key_2(), int_value(), int_value(), bst_sym(atom_key(), int_value())}, 
         begin
             T = eval(Bst),
             obs_equals(insert(K1, V1, (insert( K2, V2, T))), insert(K2, V2, (insert( K1, V1, T))))
@@ -188,7 +200,7 @@ prop_insert_insert_weak() ->
 % Inserting 2 identical keys, should result in the same tree as only inserting it once.
 prop_insert_insert() ->
     ?FORALL({K1, K2, V1, V2, Bst},
-        {atom_key(), atom_key(), int_value(), int_value(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), atom_key(), int_value(), int_value(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             obs_equals(insert(K1, V1, insert(K2, V2, T)),
@@ -201,7 +213,7 @@ prop_insert_insert() ->
                       
 prop_insert_delete_weak() -> 
     ?FORALL({K1, V, K2, Bst}, 
-        {atom_key(), int_value(), atom_key_2(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), int_value(), atom_key_2(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             obs_equals(insert(K1, V, delete(K2, T)), delete(K2, insert(K1, V, T)))
@@ -210,7 +222,7 @@ prop_insert_delete_weak() ->
 
 prop_insert_delete() ->
     ?FORALL({K1, V, K2, Bst},
-        {atom_key(), int_value(), atom_key(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), int_value(), atom_key(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             obs_equals(insert(K1, V, delete(K2, T)),
@@ -223,7 +235,7 @@ prop_insert_delete() ->
                       
 prop_insert_union() ->
     ?FORALL({K, V, Bst1, Bst2},
-        {atom_key(), int_value(), bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), int_value(), bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value())},
         begin
             T1 = eval(Bst1),
             T2 = eval(Bst2),
@@ -235,7 +247,7 @@ prop_insert_union() ->
 
 prop_delete_insert_weak() -> 
     ?FORALL({K1, K2, V, Bst}, 
-        {atom_key(), atom_key_2(), int_value(), bst_symbolic_frequency(atom_key(), int_value())}, 
+        {atom_key(), atom_key_2(), int_value(), bst_sym(atom_key(), int_value())}, 
         begin
             T = eval(Bst),
             obs_equals(delete(K1, insert(K2, V, T)), insert(K2, V, delete(K1, T)))
@@ -250,7 +262,7 @@ prop_delete_empty() ->
 % This is an almost duplicate of insert_delete, nonetheless it is nice to have, for completeness
 prop_delete_insert() ->
     ?FORALL({K1, V, K2, Bst},
-        {atom_key(), int_value(), atom_key(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), int_value(), atom_key(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             obs_equals(delete(K1, insert(K2, V, T)), 
@@ -266,7 +278,7 @@ prop_delete_insert() ->
 % Deleting 2 identical keys, should result in the same tree as only deleting it once.
 prop_delete_delete() ->
     ?FORALL({K1, K2, Bst},
-        {atom_key(), atom_key(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), atom_key(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             obs_equals(delete(K1, delete(K2, T)),
@@ -280,7 +292,7 @@ prop_delete_delete() ->
 % TODO make T2 not contain K
 prop_delete_union() ->
   ?FORALL({K, Bst1, Bst2},
-        {atom_key(), bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value())},
         begin
             T1 = eval(Bst1),
             T2 = eval(Bst2),
@@ -290,7 +302,7 @@ prop_delete_union() ->
 
 prop_delete_size() ->
   % ∀ k t. size (delete k t) =< size t
-    ?FORALL({K,Bst}, {atom_key(), bst_symbolic_frequency(atom_key(), int_value())},
+    ?FORALL({K,Bst}, {atom_key(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             bst:size(delete(K, T)) =< bst:size(T)
@@ -302,7 +314,7 @@ prop_delete_size() ->
 % The union of two trees should result in a size equal to or greater than the largest of the two.
 prop_size_union() ->
     ?FORALL({Bst1, Bst2},
-        {bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value())},
+        {bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value())},
         begin
             T1 = eval(Bst1),
             T2 = eval(Bst2),
@@ -312,7 +324,7 @@ prop_size_union() ->
 
 prop_union_empty1() ->
     ?FORALL(Bst, 
-        bst_symbolic_frequency(atom_key(), int_value()),
+        bst_sym(atom_key(), int_value()),
         begin
             T = eval(Bst),
             union(empty(), T) =:= T
@@ -321,7 +333,7 @@ prop_union_empty1() ->
 
 prop_union_empty2() ->
     ?FORALL(Bst, 
-        bst_symbolic_frequency(atom_key(), int_value()),
+        bst_sym(atom_key(), int_value()),
         begin
             T = eval(Bst),
             union(T, empty()) =:= T
@@ -331,7 +343,7 @@ prop_union_empty2() ->
 
 prop_union_delete_insert() ->
     ?FORALL({Bst1, Bst2, K, V}, 
-        {bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value()), atom_key(), int_value()},
+        {bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value()), atom_key(), int_value()},
         begin
             T1 = eval(Bst1),
             T2 = eval(Bst2),
@@ -341,7 +353,7 @@ prop_union_delete_insert() ->
 
 prop_union_union_idem() ->
     ?FORALL(Bst,
-        bst_symbolic_frequency(atom_key(), int_value()),
+        bst_sym(atom_key(), int_value()),
         begin
             T = eval(Bst),
             obs_equals(union(T, T), T)
@@ -351,7 +363,7 @@ prop_union_union_idem() ->
 % Tests both structure and key/values
 prop_union_union_assoc() ->
     ?FORALL({Bst1, Bst2, Bst3},
-        {bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value())},
+        {bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value())},
         begin
             T1 = eval(Bst1),
             T2 = eval(Bst2),
@@ -365,7 +377,11 @@ prop_find_empty() ->
         atom_key(),
         equals(find(K, empty()), nothing)).
 
-%%% ! -- Model based properties
+%%% 
+%%% ===========================================================================
+%%% Model based properties
+%%% =========================================================================== 
+
 model(T) -> to_sorted_list(T).
 -spec delete_key(Key, [{Key, Value}]) -> [{Key, Value}].
 delete_key(Key, KVS) -> [ {K, V} || {K, V} <- KVS, K =/= Key ].
@@ -384,7 +400,7 @@ prop_empty_model() ->
 %%% ? -- Insert 
 prop_insert_model() ->
     ?FORALL({K, V, Bst}, 
-        {atom_key(), int_value(), bst_symbolic_frequency(atom_key(), int_value())},
+        {atom_key(), int_value(), bst_sym(atom_key(), int_value())},
         begin
             T = eval(Bst),
             equals(model(insert(K, V, T)), sorted_insert(K, V, delete_key(K, model(T))))
@@ -394,7 +410,7 @@ prop_insert_model() ->
 %%% ? -- delete
 prop_delete_model() ->
     ?FORALL(Bst, 
-        bst_symbolic_frequency(atom_key(), int_value()),
+        bst_sym(atom_key(), int_value()),
         begin
             T = eval(Bst),
             ?FORALL(K, key_from(T),
@@ -406,7 +422,7 @@ prop_delete_model() ->
 %%% ? -- union
 prop_union_model() ->
     ?FORALL({Bst1, Bst2}, 
-        {bst_symbolic_frequency(atom_key(), int_value()), bst_symbolic_frequency(atom_key(), int_value())},
+        {bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value())},
         begin
             T1 = eval(Bst1),
             T2 = eval(Bst2),
