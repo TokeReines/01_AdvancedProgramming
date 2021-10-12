@@ -19,9 +19,10 @@ bst(Key, Value) ->
 
 bst_sym() -> 
     ?LAZY(
-      oneof([{call, bst, empty, []},
-            ?LET(T, bst_sym(), 
-            {call, bst, insert, [atom_key(), int_value(), T]})])
+        frequency([1, {call, bst, empty, []},
+            {4, ?LETSHRINK([T], [bst_sym()], 
+            {call, bst, insert, [atom_key(), int_value(), T]})}
+        ])
     ).
 
 %% A symbolic generator for bst, parameterised by key and value generators

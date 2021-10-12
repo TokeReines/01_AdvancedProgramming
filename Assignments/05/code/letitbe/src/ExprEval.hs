@@ -27,11 +27,10 @@ simplify e =
   case e of
     Oper Plus (Const c1) (Const c2) -> Const(c1+c2)
     Oper Minus (Const c1) (Const c2) -> Const(c1-c2)
-    Oper Times c@(Const 0) y -> c
-    Oper Times x c@(Const 0) -> c
-    Oper Times (Const 1) c@(Const c1) -> c
-    Oper Times c@(Const c1) (Const 1) -> c
-    Oper Times (Const c1) (Const c2) -> Const(c1*c2)
+    Oper Times e1@(Const 0) e2 -> e1
+    Oper Times e1 e2@(Const 0) -> e2
+    Oper Times (Const 1) e2 -> simplify e2
+    Oper Times e1 (Const 1) -> simplify e1
     Oper op e1 e2 -> Oper op (simplify e1) (simplify e2)
     Let v e body ->
       if body `containsVar` v then
@@ -44,4 +43,6 @@ containsVar :: Expr -> Ident -> Bool
 containsVar (Var v) i = v == i
 containsVar (Const n) i = False
 containsVar (Oper _ x y) i = x `containsVar` i || y `containsVar` i
-containsVar (Let _ _ body) i = body `containsVar` i 
+containsVar (Let _ e body) i = e `containsVar` i || body `containsVar` i 
+
+-- let x = Const 2 in let y = Var x in Times (Var x, Var y)
