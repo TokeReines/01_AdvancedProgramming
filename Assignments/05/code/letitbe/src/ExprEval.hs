@@ -25,11 +25,7 @@ evalTop e = eval e M.empty
 
 simplify e =
   case e of
-    Oper Plus (Const 0) c@(Const c1) -> c
-    Oper Plus c@(Const c1) (Const 0) -> c
     Oper Plus (Const c1) (Const c2) -> Const(c1+c2)
-    Oper Minus (Const 0) c@(Const c1) -> c
-    Oper Minus c@(Const c1) (Const 0) -> c
     Oper Minus (Const c1) (Const c2) -> Const(c1-c2)
     Oper Times c@(Const 0) y -> c
     Oper Times x c@(Const 0) -> c
