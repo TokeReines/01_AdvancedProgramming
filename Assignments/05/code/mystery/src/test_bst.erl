@@ -24,7 +24,7 @@ bst(Key, Value) ->
 bst_sym(Key, Value) -> 
     ?LAZY(
         frequency([{1, {call, bst, empty, []}},
-            {12, ?LETSHRINK([T], [bst_sym(Key, Value)], 
+            {8, ?LETSHRINK([T], [bst_sym(Key, Value)], 
                 {call, bst, insert, [Key, Value, T]})},
             {4, ?LETSHRINK([T], [bst_sym(Key, Value)], 
                 {call, bst, delete, [Key, T]})}
