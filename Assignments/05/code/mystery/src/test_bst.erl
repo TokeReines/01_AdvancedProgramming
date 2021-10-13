@@ -30,7 +30,9 @@ bst_sym(Key, Value) ->
                 {call, bst, delete, [Key, T]})}
         ])
     ).
-    
+
+insert_sym(K, V, T) -> {call, bst, insert, [K, V, T]}.
+find_sym(K, T) -> {call, bst, find, [K, T]}.
 
 % example key and value generators
 int_key() -> eqc_gen:int().
@@ -38,59 +40,6 @@ atom_key() -> eqc_gen:elements([a,b,c,d,e,f,g,h]).
 atom_key_2() -> eqc_gen:elements([i,j,k,l,m,n,o,p]).
 key_from(T)-> eqc_gen:elements(bst:keys(eval(T))++[snowflake]).
 int_value() -> eqc_gen:int().
-
-
-%%% ===========================================================================
-%%% Generator measures
-%%% =========================================================================== 
-
-prop_measure() ->
-    ?FORALL(T, 
-        bst_sym(atom_key(), int_value()),
-        collect(bst:size(eval(T)), true)
-    ).
-
-prop_measure1() ->
-  ?FORALL({T, K}, 
-      {bst_sym(atom_key(), int_value()), atom_key()},
-      collect(measure1(K, eval(T)), true)
-  ).
-
-prop_measure2() ->
-  ?FORALL({T, K}, 
-      {bst_sym(atom_key(), int_value()), atom_key()},
-      collect(measure2(K, eval(T)), true)
-  ).
-
-measure1(Key, Tree) ->
-    IsPresent = lists:any(fun(K) -> K == Key end, keys(Tree)),
-    if
-      IsPresent -> "Present";
-      true -> "absent"
-    end.
-
-measure2(Key, Tree) ->
-    T = to_sorted_list(eval(Tree)),
-    
-    Empty = T == [],
-    JustK = keys(Tree) == [Key],
-    AtStart = lists:all(fun(K) -> K >=  Key end, keys(Tree)),
-    AtEnd = lists:all(fun(K) -> K =<  Key end, keys(Tree)),
-    if 
-      Empty -> "empty";
-      JustK -> "just k";
-      AtStart -> "at start";
-      AtEnd -> "at end";
-      true -> "middle"
-    end.
-
-prop_aggregate() ->
-    ?FORALL(T, 
-        bst_sym(atom_key(), int_value()),
-        aggregate(call_names(T), true)
-    ).
-
-
 
 %%% ===========================================================================
 %%% Invariant properties
@@ -186,7 +135,6 @@ prop_find_post_absent() ->
         end
     ).  
 
-% TODO: Add frequency - Important for int keys
 prop_find_delete_post() ->
     ?FORALL({K1, K2, Bst},
         {atom_key(), atom_key(), bst_sym(atom_key(), int_value())},
@@ -200,7 +148,6 @@ prop_find_delete_post() ->
         end
     ).
 
-% TODO: Add frequency - Important for int keys
 prop_union_post() ->
     ?FORALL({K, Bst1, Bst2},
         {atom_key(), bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value())},
@@ -246,7 +193,6 @@ prop_insert_insert() ->
                 end)
         end
     ).
-                      
 prop_insert_delete_weak() -> 
     ?FORALL({K1, V, K2, Bst}, 
         {atom_key(), int_value(), atom_key_2(), bst_sym(atom_key(), int_value())},
@@ -309,7 +255,6 @@ prop_delete_insert() ->
         end
     ).
 
-%%% TODO: Use key_from(T) and frequency to get valid keys or invalid keys
 % Deleting 2 different keys should be commutative, and the order of deletions shouldn't matter. 
 % Deleting 2 identical keys, should result in the same tree as only deleting it once.
 prop_delete_delete() ->
@@ -325,7 +270,6 @@ prop_delete_delete() ->
         end
     ).
 
-% TODO make T2 not contain K
 prop_delete_union() ->
   ?FORALL({K, Bst1, Bst2},
         {atom_key(), bst_sym(atom_key(), int_value()), bst_sym(atom_key(), int_value())},
@@ -465,5 +409,55 @@ prop_union_model() ->
             equals(model(union(T1, T2)), union_model(model(T1), model(T2)))
         end
     ).
+
+%%% ===========================================================================
+%%% Generator measures
+%%% =========================================================================== 
+
+prop_measure() ->
+  ?FORALL(T, 
+      bst_sym(atom_key(), int_value()),
+      collect(bst:size(eval(T)), true)
+  ).
+
+prop_measure1() ->
+?FORALL({T, K}, 
+    {bst_sym(atom_key(), int_value()), atom_key()},
+    collect(measure1(K, eval(T)), true)
+).
+
+prop_measure2() ->
+?FORALL({T, K}, 
+    {bst_sym(atom_key(), int_value()), atom_key()},
+    collect(measure2(K, eval(T)), true)
+).
+
+measure1(Key, Tree) ->
+  IsPresent = lists:any(fun(K) -> K == Key end, keys(Tree)),
+  if
+    IsPresent -> "Present";
+    true -> "absent"
+  end.
+
+measure2(Key, Tree) ->
+  T = to_sorted_list(eval(Tree)),
+  
+  Empty = T == [],
+  JustK = keys(Tree) == [Key],
+  AtStart = lists:all(fun(K) -> K >=  Key end, keys(Tree)),
+  AtEnd = lists:all(fun(K) -> K =<  Key end, keys(Tree)),
+  if 
+    Empty -> "empty";
+    JustK -> "just k";
+    AtStart -> "at start";
+    AtEnd -> "at end";
+    true -> "middle"
+  end.
+
+prop_aggregate() ->
+  ?FORALL(T, 
+      bst_sym(atom_key(), int_value()),
+      aggregate(call_names(T), true)
+  ).
 
 %% -- Test all properties in the module: eqc:module(test_bst)

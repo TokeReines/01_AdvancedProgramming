@@ -28,5 +28,7 @@ quickChecks =
   testGroup "QuickCheck tests"
   [ testProperty "Evaluating a simplified expression does not change its meaning"
     EP.prop_eval_simplify
+  , testProperty "Measure how often the eval function fails due to var not being bound"
+    EP.prop_measure_eval_fail
   ]
 

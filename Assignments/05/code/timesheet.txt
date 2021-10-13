@@ -10,12 +10,12 @@
 #
 Assignment: 5 # do not modify
 Installation: 0m # normally covered under Assignment 1/2; fill in otherwise
-Reading:
-Lectures:
-Exploration:
-Warmup:
-Development:
-Tests:
-Report:
-Other:  # if more than 1h total, please elaborate in comment
+Reading: 5h
+Lectures: 4h
+Exploration: 3h
+Warmup: 0h
+Development: 2h
+Tests: 20h
+Report: 6h
+Other: 0h # if more than 1h total, please elaborate in comment
 # Thanks!
