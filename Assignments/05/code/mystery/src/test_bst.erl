@@ -421,9 +421,10 @@ prop_measure() ->
   ).
 
 prop_measure1() ->
-?FORALL({T, K}, 
-    {bst_sym(atom_key(), int_value()), atom_key()},
-    collect(measure1(K, eval(T)), true)
+?FORALL({T}, 
+    {bst_sym(atom_key(), int_value())},
+    ?FORALL(K, key_from(T), collect(measure1(K, eval(T)), true))
+    
 ).
 
 prop_measure2() ->
