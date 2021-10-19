@@ -9,3 +9,5 @@ code.zip
 *.beam
 async.beam
 .vscode/
+.eqc-info
+*.eqc
