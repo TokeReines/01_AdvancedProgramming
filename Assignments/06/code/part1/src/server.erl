@@ -24,16 +24,20 @@ callback_mode() -> state_functions.
 
 processing({call, From}, wait, Data) -> 
     io:format("Waiting ~n"),
-    {keep_state, Data};
+    {keep_state, Data, [{postpone, true}]};
 
-processing(cast, poll, Data) -> 
+processing({call, From}, poll, Data) -> 
     io:format("Still processing ~n"),
-    {keep_state, Data};
+    {keep_state, Data, [
+      {reply, From, nothing}
+    ]};
 
+%% Used by the worker to signal when function has finished
 processing(cast, {finished, Result}, Data) -> 
-    io:format("Worker Finished! ~n"),
-    {next_state, finished, {ok, Result}};
+io:format("Worker Finished! ~n"),
+{next_state, finished, {ok, Result}};
 
+%% Used by the worker to signal if function has failed
 processing(cast, {failed, Result}, Data) -> 
     io:format("Worker Failed! ~n"),
     {next_state, finished, {error, Result}}.
@@ -70,8 +74,8 @@ handle(EventType, EventContent, Data) ->
 work(Aid, Fun, Arg) -> 
     spawn(fun() -> 
         try 
+            timer:sleep(20000),
             Res = Fun(Arg),
-            timer:sleep(5000),
             gen_statem:cast(Aid, {finished, Res})
         catch
             throw : Throw -> gen_statem:cast(Aid, {failed, Throw});
