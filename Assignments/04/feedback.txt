@@ -1,0 +1,130 @@
+Submission:
+
+  + No packaging/building issues.
+
+  + No significant compiler warnings or style hints from OnlineTA.
+
+  + Your report is correctly named.
+
+  + You have readable listings of your code as an appendix in the report. Good!
+
+Emoji server - Report:
+
+  + Reasonable overview of main design/implementation choices.
+
+    + Good that you explained your server state.
+
+    + Good explanation of how many processes your solutions uses, and
+      what role each process have
+
+    + Good explanation of how you have dealt with aliases
+
+    = Acceptable discussion of unreliable analytics functions. However,
+      your conclusion keep these in seperate processes is a bit confusing,
+      as a long-running analytics functions would delay interaction with
+      the server.
+      A long-running analytics function should not disturb the main
+      functionality of the server (translating shortcodes).
+
+      There is a difference between the problems a long running
+      process causes and how to deal with a function that throws an
+      exception.
+
+      You should start a separate process for evaluating the
+      user-supplied function. And to not make `get_analytics` wait for
+      its result you actually need to start two processes for each
+      analytics function: one for evaluating the analytics function
+      and for updating the state of the analytics function, and one
+      for keeping track of the last good state for the analytics
+      functions, that can be returned from `get_analytics`. This is
+      one of the consequences of the task specification as given:
+      either `get_analytics` will have to wait for an unbound long
+      time for its result or we have to accept that it can get stale
+      results..
+
+  + Reasonably comprehensive and justified assessment. Although it would 
+    have been nice with more details about your testing strategy, and what 
+    tricky cases you paid special attention to when you made your testsc.
+
+    = Completeness: fine
+
+    = Correctness: fine, but as far as I can see one of your tests fails,
+      but you wrote that they all pass?
+
+    = Efficiency: fine. You include some good considerations. I disagree
+      with your decision to wait for analytics functions to compute, before
+      returning `ok` when calling `lookup`. This could seriously lower
+      your efficiency, also considering that it is a possibility that
+      the user never want to know the result of the analytics function.
+
+    = Robustness: fine. Good considerations, very relevant. About long-running/
+      never terminating analytics functions, you should NOT use timeouts. As
+      the analytics functions are a trust barrier, it is also the users
+      responsibility to give reasonable functions as input. But you should
+      ensure that you only wait for the functions to compute if you call `wait`.
+
+Emoji - code:
+
+  - Warmup: some problems
+
+    - You do not handle errors correctly. Observe that there is a difference
+      between exceptions, errors and exits. You do trap exits, but when Fun
+      throws an error it will not be caught. Consider using try-catch.
+
+    - You shouldn't need to communicate woth the worker once the result of
+      Fun(Arg) has been computed. Instead ensure that when calling `wait`
+      you wait until a message has been recieved from the worker.
+
+  - General style issues: some problems.
+
+    - Problem: You have essentially no separation of concerns in your
+      code. The code for the communication part and the "business
+      logic" is all tangled together. Try to split the looping
+      function into two functions a `handle` function that's purely
+      functional and a `loop` that only manage the communication part.
+
+    - You use a list where a map would be a more appropriate data
+      structure.
+
+  + You handle aliases correctly, sweet.
+
+  = You handle analytics function that throws exceptions correctly
+  - You don't handle long-running analytics function correctly.
+
+  - You should start at least one separate process for evaluating the
+    user-supplied function. And to not make `lookup` or `get_analytics` 
+    wait for its result you should actually start two processes for each
+    analytics function.
+
+  - Your code handles both exceptions, exits and errors. The
+    specification only ask that you deal with exceptions, and your
+    report does not mention this. Make sure that you understand the
+    difference between exceptions and errors (and exits).
+    https://learnyousomeerlang.com/errors-and-exceptions#dealing-with-exceptions
+
+  = If you went with the supervision setup (idiom 2 or 3), you could simply
+    stop the supervisor and it should then stop the entire supervision tree
+    automatically.
+    https://erlang.org/doc/design_principles/sup_princ.html#stopping
+
+Emoji - Testing:
+
+  + Tests are automated and runnable by the instruction given in the report. Good!
+
+    + Reasonably comprehensive.
+
+      = It is good practice to stop your server every time that you start it.
+        You could structure your tests in a way such that you would not need to
+        start and stop them every time.
+        The following resource has a good example of this (search for 'define'):
+        https://learnyousomeerlang.com/eunit#fixtures
+
+      - You should have more negative tests where possible.
+
+Overall score: 4 / 6
+
+  ** PASSED **
+  A fine implementation and a good report. However, the way that you handle
+  long-running functions is impractical, and you should consider doing
+  this in a safer way were the client doesn't need to wait on functions.
+  Also, you should use separation of concern in your code.
