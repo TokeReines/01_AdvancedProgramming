@@ -13,3 +13,15 @@ init({Fun, Arg}) ->
       error : _ -> {err, error}
     end.
     
+work(Aid, Fun, Arg) -> 
+    spawn(fun() -> 
+        try 
+            timer:sleep(20000),
+            Res = Fun(Arg),
+            gen_statem:cast(Aid, {finished, Res})
+        catch
+            throw : Throw -> gen_statem:cast(Aid, {failed, Throw});
+            exit : Exit -> gen_statem:cast(Aid, {failed, Exit});
+            error : Error -> gen_statem:cast(Aid, {failed, Error})
+        end
+    end).

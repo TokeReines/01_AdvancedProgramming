@@ -1,0 +1,2 @@
+-module(coordinator).
+-behaviour(gen_statem).
