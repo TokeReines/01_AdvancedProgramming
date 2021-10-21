@@ -37,7 +37,7 @@ init({Player1, Player2, N}) ->
         #{player1 => {Player1, []},
           player2 => {Player2, []},
           bestOf => N,
-          games => 0,
+          nonties => 0,
           ties => 0},
     {ok, State, Data}.
 
@@ -56,53 +56,47 @@ idle({call, From}, Choice, Data) ->
     io:format("You chose ~w! Waiting for opponent?. ~n", [Choice]),
     {next_state, Choice, {From, Data}}.
 
+tie(Data, Player1, Player2) ->
+    #{ties := Ties} = Data,
+    NewData = Data#{ties := Ties + 1},
+    {next_state, idle, NewData, [{reply, Player2, tie}, {reply, Player1, tie}]}.
+
+nontie(Data, Winner, Loser, WinningMove) ->
+    #{nonties := NonTies} = Data,
+    NewData = Data#{nonties := NonTies + 1},
+    {next_state, idle, NewData, [{reply, Winner, win}, {reply, Loser, {loss, WinningMove}}]}.
+
 rock({call, Player2}, Choice, {Player1, Data}) ->
     io:format("You made a ~w move!  ~n", [Choice]),
     case Choice of
-        rock ->
-            #{ties := Ties} = Data,
-            NewData = Data#{ties := Ties + 1},
-            {next_state, idle, NewData, [{reply, Player2, tie}, {reply, Player1, tie}]};
-        paper ->
-            #{ties := Ties} = Data,
-            NewData = Data#{ties := Ties + 1},
-            {next_state, idle, Data, [{reply, Player2, win}, {reply, Player1, {loss, paper}}]};
-        scissor ->
-            % Do some loosing logic here
-            {next_state, idle, Data, [{reply, Player2, {loss, rock}}, {reply, Player1, win}]}
+        rock -> tie(Data, Player1, Player2);
+        paper -> nontie(Data, Player2, Player1, paper);
+        scissor -> nontie(Data, Player1, Player2, rock)
     end.
 
 paper({call, Player2}, Choice, {Player1, Data}) ->
     io:format("You made a ~w move!  ~n", [Choice]),
     case Choice of
-        rock ->
-            % Do some winning logic here
-            {next_state, idle, Data, [{reply, Player2, tie}, {reply, Player1, tie}]};
-        paper ->
-            {next_state, idle, Data, [{reply, Player2, win}, {reply, Player1, {loss, paper}}]};
-        scissor ->
-            % Do some loosing logic here
-            {next_state, idle, Data, [{reply, Player2, {loss, rock}}, {reply, Player1, win}]}
+        rock -> nontie(Data, Player1, Player2, paper);
+        paper -> tie(Data, Player1, Player2);
+        scissor -> nontie(Data, Player2, Player1, scissor)
     end.
 
 scissor({call, Player2}, Choice,  {Player1, Data}) ->
+    io:format("You made a ~w move!  ~n", [Choice]),
     case Choice of
-        rock ->
-            ok;
-        paper ->
-            ok;
-        scissor ->
-            ok
-    end,
-    {next_state, finished, {ok}}.
+        rock -> nontie(Data, Player2, Player1, rock);
+        paper -> nontie(Data, Player1, Player2, scissor);
+        scissor -> tie(Data, Player1, Player2)
+    end.
 
 test() ->
     {ok, Coordinator} = start("P1", "P2", 3),
     spawn(fun() ->
-             Res = move(Coordinator, rock),
+             Res = move(Coordinator, scissor),
              io:format("P1: ~w ~n", [Res])
           end),
     spawn(fun() ->
-             Res = move(Coordinator, scissor),
+             Res = move(Coordinator, paper),
              io:format("P2: ~w ~n", [Res])
           end).
