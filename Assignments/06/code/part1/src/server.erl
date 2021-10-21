@@ -40,34 +40,22 @@ wait_catch(Aid) ->
 
 
 wait_any(Aids) -> 
-    Spawn = 
-        fun(Ref) ->
-            fun(Aid) ->
-                spawn_link(fun() -> 
-                    Res = gen_statem:call(Aid, wait),
-                    io:format("Inside spawny! ~n"),
-                    Ref ! {Aid, Res}
-                end)
-            end
-        end,
-    Work = fun(A) ->     
+    Work = fun(A) ->    
+        Self = self(),
+        [ spawn_link(fun() -> Self ! {Aid, wait(Aid)} end) || Aid <- Aids],
         io:format("Inside Work! ~n"),
-        lists:foreach(A(self()), Aids),
         receive
             {Aid, Data} -> 
                 io:format("Received Data! ~w ~w ~n", [Aid, Data]),
                 {Aid, Data};
-            Stuff -> io:format("Received Stuff! ~w ~n", [Stuff])
+            _ -> 
+                io:format("Received Stuff! ~w ~n", [ok]), 
+                ok
         end
     end,     
-    Async = new(Work, Spawn),
-    A = wait(Async),
-    case A of
-        {ok, Value} -> Value;
-        {throw, ErrorMessage} -> throw(ErrorMessage);
-        {exit, ErrorMessage} -> exit(ErrorMessage);
-        {error, ErrorMessage} -> error(ErrorMessage)
-    end.
+    Async = new(Work, 1),
+    {ok, {Aid, Data}} = wait(Async),
+    {Aid, Data}.
 
 
 poll(Aid) -> gen_statem:call(Aid, poll).
@@ -148,7 +136,7 @@ test_wait() ->
     ServerA = new(test_fun(), 1),
     io:format("Starting ServerB ~n"),
     ServerB = new(test_error(), 2),
-    A = wait_any([ServerB, ServerA]),
+    A = wait_any([ServerB]),
     try
         stop(ServerA),
         stop(ServerB)
