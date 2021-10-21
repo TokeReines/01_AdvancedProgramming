@@ -47,24 +47,10 @@ callback_mode() ->
 %%% -------------------------------------------------------
 %%% State callbacks
 %%% -------------------------------------------------------
-% case lists:member(Choice, [rock, paper, scissor]) of
-%     true -> ok;
-%     false -> throw("Invalid move")
-% end,
 
 idle({call, From}, Choice, Data) ->
     io:format("You chose ~w! Waiting for opponent?. ~n", [Choice]),
     {next_state, Choice, {From, Data}}.
-
-tie(Data, Player1, Player2) ->
-    #{ties := Ties} = Data,
-    NewData = Data#{ties := Ties + 1},
-    {next_state, idle, NewData, [{reply, Player2, tie}, {reply, Player1, tie}]}.
-
-nontie(Data, Winner, Loser, WinningMove) ->
-    #{nonties := NonTies} = Data,
-    NewData = Data#{nonties := NonTies + 1},
-    {next_state, idle, NewData, [{reply, Winner, win}, {reply, Loser, {loss, WinningMove}}]}.
 
 rock({call, Player2}, Choice, {Player1, Data}) ->
     io:format("You made a ~w move!  ~n", [Choice]),
@@ -89,6 +75,24 @@ scissor({call, Player2}, Choice,  {Player1, Data}) ->
         paper -> nontie(Data, Player1, Player2, scissor);
         scissor -> tie(Data, Player1, Player2)
     end.
+
+%%% -------------------------------------------------------
+%%% State helpers
+%%% -------------------------------------------------------
+
+tie(Data, Player1, Player2) ->
+    #{ties := Ties} = Data,
+    NewData = Data#{ties := Ties + 1},
+    {next_state, idle, NewData, [{reply, Player2, tie}, {reply, Player1, tie}]}.
+
+nontie(Data, Winner, Loser, WinningMove) ->
+    #{nonties := NonTies} = Data,
+    NewData = Data#{nonties := NonTies + 1},
+    {next_state, idle, NewData, [{reply, Winner, win}, {reply, Loser, {loss, WinningMove}}]}.
+
+%%% -------------------------------------------------------
+%%% Appendix
+%%% -------------------------------------------------------
 
 test() ->
     {ok, Coordinator} = start("P1", "P2", 3),
