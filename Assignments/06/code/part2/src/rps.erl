@@ -17,8 +17,6 @@ start() ->
 queue_up(BrokerRef, Name, Rounds) ->
     gen_server:call(BrokerRef, {queue_up, Name, Rounds}).
 
-    % coordinator:start(Name, Name, Rounds).
-
 move(Coordinator, Choice) ->
     coordinator:move(Coordinator, Choice).
 
@@ -40,24 +38,24 @@ init(_Args) ->
            isDraining => false}}.
 
 %%% -------------------- Queue Up -------------------------
-handle_call({queue_up, Name, Rounds}, From, State) ->
+handle_call({queue_up, Player1Name, Rounds}, Player1Pid, State) ->
     % TODO: Handle errors to check that rounds are > 0 and names are terms.
     #{inQueue := Queue, 
       ongoing := Ongoing} = State,
     case lists:keyfind(Rounds, 2, Queue)  of
         false ->  
-            NewQueue = [{Name, Rounds, From} | Queue], 
+            NewQueue = [{Player1Name, Rounds, Player1Pid} | Queue], 
             NewState = State#{inQueue := NewQueue},
             io:format("State: ~w ~n", [NewState]),
             {noreply, NewState};
-        {QueuedName, _, QPid} ->  
-            {ok, Cid} = coordinator:start(Name, QueuedName, Rounds),
+        {Player2Name, _, Player2Pid} ->  
+            {ok, Cid} = coordinator:start({Player1Name, Player1Pid}, {Player2Name, Player2Pid}, Rounds),
             NewOngoing = [Cid | Ongoing],
             NewQueue = lists:keydelete(Rounds, 2, Queue),
             NewState = State#{inQueue := NewQueue, ongoing := NewOngoing},
             io:format("State: ~w ~n", [NewState]),
-            gen_server:reply(QPid, {ok, QueuedName, Cid}),
-            {reply, {ok, QueuedName, Cid}, NewState}
+            gen_server:reply(Player2Pid, {ok, Player2Name, Cid}),
+            {reply, {ok, Player1Name, Cid}, NewState}
     end;
 
 %%% -------------------- Statistics -----------------------
