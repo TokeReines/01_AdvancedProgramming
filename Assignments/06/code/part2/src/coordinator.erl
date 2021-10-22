@@ -2,9 +2,9 @@
 
 -behaviour(gen_statem).
 
--export([start/3, move/2]).
+-export([start/3, move/2, drain_coordinator/1]).
 -export([callback_mode/0, init/1]).
--export([idle/3, rock/3, paper/3, scissor/3, invalid_choice/3]).
+-export([idle/3, rock/3, paper/3, scissor/3, invalid_choice/3, draining/3]).
 -export([test/0]).
 
 %%% -------------------------------------------------------
@@ -16,6 +16,9 @@ start(Player1, Player2, N) ->
 
 move(Coordinator, Choice) ->
     gen_statem:call(Coordinator, Choice).
+
+drain_coordinator(Coordinator) -> 
+    gen_statem:cast(Coordinator, drain).
 
 %%% -------------------------------------w------------------
 %%% Mandatory callback functions
@@ -52,7 +55,9 @@ idle({call, From}, Choice, Data) ->
     %     true -> {next_state, Choice, {From, Data}};
     %     false -> {next_state, invalid_choice, {From, Data}}
     % end.
-    {next_state, Choice, {From, Data}}.
+    {next_state, Choice, {From, Data}};
+
+idle(cast, drain, Data) -> {next_state, draining, Data}.
 
 rock({call, Player2}, Choice, {Player1, Data}) ->
     io:format("You made a ~w move!  ~n", [Choice]),
@@ -61,7 +66,9 @@ rock({call, Player2}, Choice, {Player1, Data}) ->
         paper -> nontie(Data, Player2, Player1, paper);
         scissor -> nontie(Data, Player1, Player2, rock);
         _ -> nontie(Data, Player1, Player2, scissor)
-    end.
+    end;
+
+rock(cast, drain, Data) -> {next_state, draining, Data}.
 
 paper({call, Player2}, Choice, {Player1, Data}) ->
     io:format("You made a ~w move!  ~n", [Choice]),
@@ -70,7 +77,9 @@ paper({call, Player2}, Choice, {Player1, Data}) ->
         paper -> tie(Data, Player1, Player2);
         scissor -> nontie(Data, Player2, Player1, scissor);
         _ -> nontie(Data, Player1, Player2, paper)
-    end.
+    end;
+
+paper(cast, drain, Data) -> {next_state, draining, Data}.
 
 scissor({call, Player2}, Choice,  {Player1, Data}) ->
     io:format("You made a ~w move!  ~n", [Choice]),
@@ -79,7 +88,9 @@ scissor({call, Player2}, Choice,  {Player1, Data}) ->
         paper -> nontie(Data, Player1, Player2, scissor);
         scissor -> tie(Data, Player1, Player2);
         _ -> nontie(Data, Player1, Player2, scissor)
-    end.
+    end;
+
+scissor(cast, drain, Data) -> {next_state, draining, Data}.
 
 invalid_choice({call, Player2}, Choice, {Player1, Data}) ->
     io:format("Invalid choice: You made a ~w move!  ~n", [Choice]),
@@ -88,7 +99,15 @@ invalid_choice({call, Player2}, Choice, {Player1, Data}) ->
         paper -> nontie(Data, Player2, Player1, Choice);
         scissor -> nontie(Data, Player2, Player1, Choice);
         _ -> tie(Data, Player1, Player2) % Both made invalid moves
-    end.
+    end;
+
+invalid_choice(cast, drain, Data) -> {next_state, draining, Data}.
+
+
+draining(EventType, EventContent, Data) ->
+    io:format("Ignoring move, server is being drained!~n"),
+    % Add some more logic here.
+    {keep_state, Data}.
 
 %%% -------------------------------------------------------
 %%% State helpers

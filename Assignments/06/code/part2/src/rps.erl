@@ -15,7 +15,7 @@ start() ->
     gen_server:start_link(?MODULE, [], []).
 
 queue_up(BrokerRef, Name, Rounds) ->
-    gen_server:call(BrokerRef, {queue_up, Name, Rounds}).
+    gen_server:call(BrokerRef, {queue_up, Name, Rounds}, infinity).
 
     % coordinator:start(Name, Name, Rounds).
 
@@ -43,21 +43,31 @@ init(_Args) ->
 handle_call({queue_up, Name, Rounds}, From, State) ->
     % TODO: Handle errors to check that rounds are > 0 and names are terms.
     #{inQueue := Queue, 
-      ongoing := Ongoing} = State,
-    case lists:keyfind(Rounds, 2, Queue)  of
-        false ->  
-            NewQueue = [{Name, Rounds, From} | Queue], 
-            NewState = State#{inQueue := NewQueue},
-            io:format("State: ~w ~n", [NewState]),
-            {noreply, NewState};
-        {QueuedName, _, QPid} ->  
-            {ok, Cid} = coordinator:start(Name, QueuedName, Rounds),
-            NewOngoing = [Cid | Ongoing],
-            NewQueue = lists:keydelete(Rounds, 2, Queue),
-            NewState = State#{inQueue := NewQueue, ongoing := NewOngoing},
-            io:format("State: ~w ~n", [NewState]),
-            gen_server:reply(QPid, {ok, QueuedName, Cid}),
-            {reply, {ok, QueuedName, Cid}, NewState}
+      ongoing := Ongoing,
+      isDraining := IsDraining} = State,
+    if
+      IsDraining -> 
+        {reply, server_stopping, State};
+      not is_integer(Rounds) ->
+        {reply, {error, "Number of rounds has to be an integer"}, State};
+      Rounds < 1 -> 
+        {reply, {error, "Number of rounds has to be greater thant 1"}, State};
+      true ->   
+        case lists:keyfind(Rounds, 2, Queue)  of
+            false ->  
+                NewQueue = [{Name, Rounds, From} | Queue], 
+                NewState = State#{inQueue := NewQueue},
+                io:format("State: ~w ~n", [NewState]),
+                {noreply, NewState};
+            {QueuedName, _, QPid} ->  
+                {ok, Cid} = coordinator:start(Name, QueuedName, Rounds),
+                NewOngoing = [Cid | Ongoing],
+                NewQueue = lists:keydelete(Rounds, 2, Queue),
+                NewState = State#{inQueue := NewQueue, ongoing := NewOngoing},
+                io:format("State: ~w ~n", [NewState]),
+                gen_server:reply(QPid, {ok, QueuedName, Cid}),
+                {reply, {ok, QueuedName, Cid}, NewState}
+        end
     end;
 
 %%% -------------------- Statistics -----------------------
@@ -68,6 +78,9 @@ handle_call(statistics, _From, State) ->
     Reply = {ok, LongestGame, length(InQueue), length(Ongoing)},
     {reply, Reply, State};
 
+%%% -------------- Coordinator drained --------------------
+
+
 %%% ---------------- Catch all call -----------------------
 handle_call(Request, From, State) ->
     io:format("~w, ~w, ~w  ~n", [Request, From, State]),
@@ -76,15 +89,24 @@ handle_call(Request, From, State) ->
 
 %%% ---------------- Drain -----------------------
 handle_cast(drain, State) ->
-    io:format("~w, ~w~n", [drain, State]),
-    {reply, clientReply, State};
+    #{inQueue     := InQueue, 
+      ongoing     := Ongoing} = State,
+    lists:foreach(fun(Elem) -> 
+            {_, _, QPid} = Elem,
+            gen_server:reply(QPid, server_stopping)
+        end, InQueue),
+    lists:foreach(fun(Cid) -> 
+            coordinator:drain_coordinator(Cid)
+        end, Ongoing),
+    NewState = State#{inQueue := [], isDraining := true},
+    {noreply, NewState};
 
 %%% ---------------- Catch all cast -----------------------
 handle_cast(Request, State) ->
     io:format("~w, ~w~n", [Request, State]),
-    {reply, clientReply, State}.
+    {noreply, State}.
 
-    
+
 
 test() -> 
     {ok, BrokerRef} = start(),
