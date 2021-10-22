@@ -17,6 +17,7 @@ start() ->
 queue_up(BrokerRef, Name, Rounds) ->
     gen_server:call(BrokerRef, {queue_up, Name, Rounds}, infinity).
 
+-spec move(pid(), term()) -> term().
 move(Coordinator, Choice) ->
     coordinator:move(Coordinator, Choice).
 
@@ -108,18 +109,36 @@ handle_cast(Request, State) ->
 test() -> 
     {ok, BrokerRef} = start(),
     spawn(fun() -> 
-            Res = queue_up(BrokerRef, "P1", 3),
-            io:format("P1: ~w ~n", [Res])
+            {ok, Res, CPid} = queue_up(BrokerRef, "P1", 3),
+            io:format("P1: ~w ~n", [Res]),     
+            Res1 = move(CPid, rock),
+            io:format("P1: ~w ~n", [Res1]), 
+            Res2 = move(CPid, rock),
+            io:format("P1: ~w ~n", [Res2]),    
+            Res3 = move(CPid, rock),
+            io:format("P1: ~w ~n", [Res3])
           end),       
     spawn(fun() -> 
-            Res = queue_up(BrokerRef, "P2", 2),
-            io:format("P2: ~w ~n", [Res])
+            {ok, Res, CPid} = queue_up(BrokerRef, "P2", 2),
+            io:format("P2: ~w ~n", [Res]),
+            Res1 = move(CPid, paper),
+            io:format("P2: ~w ~n", [Res1]),  
+            Res2 = move(CPid, paper),
+            io:format("P2: ~w ~n", [Res2]),    
+            Res3 = move(CPid, paper),
+            io:format("P2: ~w ~n", [Res3])
           end),       
     spawn(fun() -> 
-            Res = queue_up(BrokerRef, "P3", 3),
-            io:format("P3: ~w ~n", [Res])
-          end),
-    spawn(fun() -> 
-        Res = rps:statistics(BrokerRef),
-        io:format("Statistics: ~w ~n", [Res])
-      end).       
+            {ok, Res, CPid} = queue_up(BrokerRef, "P3", 3),
+            io:format("P3: ~w ~n", [Res]),
+            Res1 = move(CPid, scissor),
+            io:format("P3: ~w ~n", [Res1]),    
+            Res2 = move(CPid, scissor),
+            io:format("P3: ~w ~n", [Res2]),    
+            Res3 = move(CPid, scissor),
+            io:format("P3: ~w ~n", [Res3])
+          end).
+    % spawn(fun() -> 
+    %     Res = rps:statistics(BrokerRef),
+    %     io:format("Statistics: ~w ~n", [Res])
+    %   end).       

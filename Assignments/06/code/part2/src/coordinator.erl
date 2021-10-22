@@ -5,7 +5,6 @@
 -export([start/3, move/2, drain_coordinator/1]).
 -export([callback_mode/0, init/1]).
 -export([idle/3, rock/3, paper/3, scissor/3, invalid_choice/3, draining/3]).
--export([test/0]).
 
 %%% -------------------------------------------------------
 %%% Coordinator API - Only know to rps
@@ -34,8 +33,12 @@ drain_coordinator(Coordinator) ->
 %   }]
 
 % State = PlayerNames and list of round won, Number of best-of-Rounds,
-init({{Player1Name, Player1Pid}, {Player2Name, Player2Pid}, N}) ->
-    State = idle,
+init({{Player1Name, Player1}, {Player2Name, Player2}, N}) ->
+    State = idle, 
+    io:format("Pid1 ~w ~n", [Player1]),
+    io:format("Pid2 ~w ~n", [Player2]),
+    {Player1Pid, _} = Player1,
+    {Player2Pid, _} = Player2,
     Data = 
         #{
             Player2Pid => 0,
@@ -123,42 +126,21 @@ tie(Data, Player1, Player2) ->
     ]}.
 
 nontie(Data, Winner, Loser, WinningMove) ->
-    io:format("Nontie ~n"),
-    #{ nonties := NonTies, bestOf := BestOf, Winner := WinnerWins, Loser := LoserWins} = Data, 
-    NewWinnerWins = WinnerWins + 1,
-    NewData = Data#{ nonties := NonTies + 1, Winner := NewWinnerWins}, 
+    {WinnerPid, _} = Winner,
+    {LoserPid, _} = Loser,
+    #{ nonties := NonTies, bestOf := BestOf, WinnerPid := WinnerWins, LoserPid := LoserWins} = Data, 
+    NewWinnerWins = WinnerWins + 1, 
+    NewNonTies = NonTies + 1,
+    NewData = Data#{ nonties := NewNonTies, WinnerPid := NewWinnerWins},  
     case NonTies + 1 == BestOf of
-        true -> 
+        true ->  
             {next_state, idle, NewData, [
-                {reply, Winner, {game_over, NewWinnerWins, NonTies - NewWinnerWins}}, 
-                {reply, Loser, {game_over, LoserWins, NonTies - LoserWins}}
+                {reply, Winner, {game_over, NewWinnerWins, NewNonTies - NewWinnerWins}}, 
+                {reply, Loser, {game_over, LoserWins, NewNonTies - LoserWins}}
         ]}; 
-        false -> 
+        false ->  
             {next_state, idle, NewData, [
                 {reply, Winner, win}, 
                 {reply, Loser, {loss, WinningMove}}
         ]}
     end.
-
-%%% -------------------------------------------------------
-%%% Appendix
-%%% -------------------------------------------------------
-
-test() ->
-    {ok, Coordinator} = start("P1", "P2", 3),
-    spawn(fun() ->
-             Res1 = move(Coordinator, paper),
-             io:format("P1: ~w ~n", [Res1]),
-             Res2 = move(Coordinator, paper),
-             io:format("P1: ~w ~n", [Res2]),
-             Res3 = move(Coordinator, paper),
-             io:format("P1: ~w ~n", [Res3])
-          end),
-    spawn(fun() ->
-             Res1 = move(Coordinator, rock),
-             io:format("P2: ~w ~n", [Res1]),
-             Res2 = move(Coordinator, scissor),
-             io:format("P2: ~w ~n", [Res2]),
-             Res3 = move(Coordinator, rock),
-             io:format("P2: ~w ~n", [Res3])
-          end).
