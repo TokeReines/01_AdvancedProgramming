@@ -34,12 +34,15 @@ drain_coordinator(Coordinator) ->
 %   }]
 
 % State = PlayerNames and list of round won, Number of best-of-Rounds,
-init({Player1, Player2, N}) ->
+init({{Player1Name, Player1Pid}, {Player2Name, Player2Pid}, N}) ->
     State = idle,
     Data = 
-        #{bestOf => N,
-          nonties => 0,
-          ties => 0},
+        #{
+            Player2Pid => 0,
+            Player1Pid => 0,
+            bestOf => N,
+            nonties => 0,
+            ties => 0},
     {ok, State, Data}.
 
 callback_mode() ->
@@ -51,13 +54,10 @@ callback_mode() ->
 
 idle({call, From}, Choice, Data) ->
     io:format("You chose ~w! Waiting for opponent?. ~n", [Choice]),
-    % case lists:member(Choice, [rock, paper, scissor]) of
-    %     true -> {next_state, Choice, {From, Data}};
-    %     false -> {next_state, invalid_choice, {From, Data}}
-    % end.
-    {next_state, Choice, {From, Data}};
-
-idle(cast, drain, Data) -> {next_state, draining, Data}.
+    case lists:member(Choice, [rock, paper, scissor]) of
+        true -> {next_state, Choice, {From, Data}};
+        false -> {next_state, invalid_choice, {From, Data}}
+    end.
 
 rock({call, Player2}, Choice, {Player1, Data}) ->
     io:format("You made a ~w move!  ~n", [Choice]),
@@ -117,15 +117,27 @@ tie(Data, Player1, Player2) ->
     io:format("Tie ~n"),
     #{ties := Ties} = Data,
     NewData = Data#{ ties := Ties + 1 },
-    {next_state, idle, NewData, [{reply, Player2, tie}, {reply, Player1, tie}]}.
+    {next_state, idle, NewData, [
+        {reply, Player2, tie}, 
+        {reply, Player1, tie}
+    ]}.
 
 nontie(Data, Winner, Loser, WinningMove) ->
     io:format("Nontie ~n"),
-    #{ nonties := NonTies, bestOf := BestOf} = Data, % Winner := WinCount 
-    NewData = Data#{ nonties := NonTies + 1 }, % Winner := WinCount + 1. TODO: Winner is a PID, which we dont have at time of creation of coordinator.
+    #{ nonties := NonTies, bestOf := BestOf, Winner := WinnerWins, Loser := LoserWins} = Data, 
+    NewWinnerWins = WinnerWins + 1,
+    NewData = Data#{ nonties := NonTies + 1, Winner := NewWinnerWins}, 
     case NonTies + 1 == BestOf of
-        true -> {next_state, idle, NewData, [{reply, Winner, {game_over, 0, 0}}, {reply, Loser, {game_over, 0, 0}}]}; 
-        false -> {next_state, idle, NewData, [{reply, Winner, win}, {reply, Loser, {loss, WinningMove}}]}
+        true -> 
+            {next_state, idle, NewData, [
+                {reply, Winner, {game_over, NewWinnerWins, NonTies - NewWinnerWins}}, 
+                {reply, Loser, {game_over, LoserWins, NonTies - LoserWins}}
+        ]}; 
+        false -> 
+            {next_state, idle, NewData, [
+                {reply, Winner, win}, 
+                {reply, Loser, {loss, WinningMove}}
+        ]}
     end.
 
 %%% -------------------------------------------------------
