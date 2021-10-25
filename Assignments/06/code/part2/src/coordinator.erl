@@ -2,16 +2,16 @@
 
 -behaviour(gen_statem).
 
--export([start/3, move/2, drain_coordinator/1]).
+-export([start/4, move/2, drain_coordinator/1, stop_coordinator/1]).
 -export([callback_mode/0, init/1]).
--export([idle/3, rock/3, paper/3, scissor/3, invalid_choice/3, draining/3]).
+-export([idle/3, rock/3, paper/3, scissor/3, invalid_choice/3, draining/3, game_over/3]).
 
 %%% -------------------------------------------------------
 %%% Coordinator API - Only know to rps
 %%% -------------------------------------------------------
 
-start(Player1, Player2, N) ->
-    gen_statem:start(?MODULE, {Player1, Player2, N}, []).
+start(Player1Ref, Player2Ref, NRounds, BrookerRef) ->
+    gen_statem:start(?MODULE, {Player1Ref, Player2Ref, NRounds, BrookerRef}, []).
 
 move(Coordinator, Choice) ->
     gen_statem:call(Coordinator, Choice).
@@ -19,37 +19,40 @@ move(Coordinator, Choice) ->
 drain_coordinator(Coordinator) -> 
     gen_statem:cast(Coordinator, drain).
 
+stop_coordinator(Coordinator) ->
+    gen_statem:stop(Coordinator).
+
 %%% -------------------------------------w------------------
 %%% Mandatory callback functions
 %%% -------------------------------------------------------
 
 % Broker data: [#{playerN => CoordinatorId}]
 
-%[#{player1 => {PlayerName, Pid, [RoundsWon]},
-%   player2 => {PlayerName, Pid, [RoundWon]},
+%[#{player1Pid => {RoundsWon},
+%   player2Pid => {RoundWon},
 %   bestOf => NRounds,
-%   wins => N
-%   ties => NRounds
+%   wins => N,
+%   ties => NRounds,
+%   brokerRef => brokerRef
 %   }]
 
 % State = PlayerNames and list of round won, Number of best-of-Rounds,
-init({{Player1Name, Player1}, {Player2Name, Player2}, N}) ->
+init({Player1Ref, Player2Ref, NRounds, BrookerRef}) ->
     State = idle, 
-    io:format("Pid1 ~w ~n", [Player1]),
-    io:format("Pid2 ~w ~n", [Player2]),
-    {Player1Pid, _} = Player1,
-    {Player2Pid, _} = Player2,
+    {Player1Pid, _} = Player1Ref,
+    {Player2Pid, _} = Player2Ref,
     Data = 
         #{
-            Player2Pid => 0,
+            hasChoosen => {},
             Player1Pid => 0,
-            bestOf => N,
+            Player2Pid => 0,
+            brooker => BrookerRef,
+            bestOf  => NRounds,
             nonties => 0,
-            ties => 0},
+            ties    => 0},
     {ok, State, Data}.
 
-callback_mode() ->
-    state_functions.
+callback_mode() -> state_functions.
 
 %%% -------------------------------------------------------
 %%% State callbacks
@@ -57,87 +60,143 @@ callback_mode() ->
 
 idle({call, From}, Choice, Data) ->
     io:format("You chose ~w! Waiting for opponent?. ~n", [Choice]),
-    case lists:member(Choice, [rock, paper, scissor]) of
-        true -> {next_state, Choice, {From, Data}};
-        false -> {next_state, invalid_choice, {From, Data}}
-    end.
+    IsAllowedToPlay = is_allowed_player(From, Data),
+    if
+      IsAllowedToPlay -> 
+        case lists:member(Choice, [rock, paper, scissor]) of
+            true -> {next_state, Choice, Data#{hasChoosen := From}};
+            false -> {next_state, invalid_choice, Data#{hasChoosen := From}}
+        end;
+      true -> {keep_state, Data}
+    end;
 
-rock({call, Player2}, Choice, {Player1, Data}) ->
+idle(cast, drain, Data) -> {next_state, draining, Data}.
+
+rock({call, From}, Choice, Data) ->
     io:format("You made a ~w move!  ~n", [Choice]),
-    case Choice of
-        rock -> tie(Data, Player1, Player2);
-        paper -> nontie(Data, Player2, Player1, paper);
-        scissor -> nontie(Data, Player1, Player2, rock);
-        _ -> nontie(Data, Player1, Player2, scissor)
+    IsAllowedToPlay = is_allowed_player(From, Data),
+    if 
+      IsAllowedToPlay ->
+          OtherPlayerRef = maps:get(hasChoosen, Data),
+          case Choice of
+              rock -> tie(Data, From);
+              paper -> nontie(Data, From, OtherPlayerRef, paper);
+              scissor -> nontie(Data, OtherPlayerRef, From, rock);
+              _ -> nontie(Data, OtherPlayerRef, From, rock)
+          end;
+      true -> {keep_state, Data}
     end;
 
 rock(cast, drain, Data) -> {next_state, draining, Data}.
 
-paper({call, Player2}, Choice, {Player1, Data}) ->
+paper({call, From}, Choice, Data) ->
     io:format("You made a ~w move!  ~n", [Choice]),
-    case Choice of
-        rock -> nontie(Data, Player1, Player2, paper);
-        paper -> tie(Data, Player1, Player2);
-        scissor -> nontie(Data, Player2, Player1, scissor);
-        _ -> nontie(Data, Player1, Player2, paper)
+    IsAllowedToPlay = is_allowed_player(From, Data),
+    if
+      IsAllowedToPlay ->
+        OtherPlayerRef = maps:get(hasChoosen, Data),
+        case Choice of
+            rock -> nontie(Data, OtherPlayerRef, From, paper);
+            paper -> tie(Data, From);
+            scissor -> nontie(Data, From, OtherPlayerRef, scissor);
+            _ -> nontie(Data, OtherPlayerRef, From, paper)
+        end;
+      true -> {keep_state, Data}
     end;
 
 paper(cast, drain, Data) -> {next_state, draining, Data}.
 
-scissor({call, Player2}, Choice,  {Player1, Data}) ->
+scissor({call, From}, Choice,  Data) ->
     io:format("You made a ~w move!  ~n", [Choice]),
-    case Choice of
-        rock -> nontie(Data, Player2, Player1, rock);
-        paper -> nontie(Data, Player1, Player2, scissor);
-        scissor -> tie(Data, Player1, Player2);
-        _ -> nontie(Data, Player1, Player2, scissor)
+    IsAllowedToPlay = is_allowed_player(From, Data),
+    if 
+      IsAllowedToPlay -> 
+        OtherPlayerRef = maps:get(hasChoosen, Data),
+        case Choice of
+            rock -> nontie(Data, From, OtherPlayerRef, rock);
+            paper -> nontie(Data, OtherPlayerRef, From, scissor);
+            scissor -> tie(Data, From);
+            _ -> nontie(Data, OtherPlayerRef, From, scissor)
+        end;
+      true -> {keep_state, Data}
     end;
 
 scissor(cast, drain, Data) -> {next_state, draining, Data}.
 
-invalid_choice({call, Player2}, Choice, {Player1, Data}) ->
+invalid_choice({call, From}, Choice, Data) ->
     io:format("Invalid choice: You made a ~w move!  ~n", [Choice]),
-    case Choice of
-        rock -> nontie(Data, Player2, Player1, Choice);
-        paper -> nontie(Data, Player2, Player1, Choice);
-        scissor -> nontie(Data, Player2, Player1, Choice);
-        _ -> tie(Data, Player1, Player2) % Both made invalid moves
+    IsAllowedToPlay = is_allowed_player(From, Data),
+    if 
+      IsAllowedToPlay -> 
+        OtherPlayerRef = maps:get(hasChoosen, Data),
+        case Choice of
+            rock -> nontie(Data, From, OtherPlayerRef, Choice);
+            paper -> nontie(Data, From, OtherPlayerRef, Choice);
+            scissor -> nontie(Data, From, OtherPlayerRef, Choice);
+            _ -> tie(Data, From) % Both made invalid moves
+        end;
+      true -> {keep_state, Data}
     end;
 
 invalid_choice(cast, drain, Data) -> {next_state, draining, Data}.
 
+game_over(cast, _, Data) -> {keep_state, Data};
+game_over({call, _From}, _, Data) -> {keep_state, Data}.
 
-draining(EventType, EventContent, Data) ->
-    io:format("Ignoring move, server is being drained!~n"),
-    % Add some more logic here.
-    {keep_state, Data}.
+draining({call, From}, _, Data) ->
+    IsAllowedToPlay = is_allowed_player(From, Data),
+    #{hasChoosen := HasChoosen, brooker := BrookerRef} = Data,
+    if 
+      IsAllowedToPlay ->
+          {Pid, _} = From,
+          NewData = maps:remove(Pid, Data),
+          case HasChoosen =:= {} of
+            true -> 
+              {keep_state, NewData#{hasChoosen := From}, [{reply, From, server_stopping}]};
+            false -> 
+              gen_statem:cast(BrookerRef, {coordinator_drained, self()}),
+              {keep_state, Data, [{reply, From, server_stopping}]}
+          end;
+      true -> {keep_state, Data}
+    end.
 
 %%% -------------------------------------------------------
 %%% State helpers
 %%% -------------------------------------------------------
+ 
+is_allowed_player(PlayerRef, Data) ->
+    {PlayerPid, _} = PlayerRef,
+    maps:is_key(PlayerPid, Data).
 
-tie(Data, Player1, Player2) ->
+tie(Data, From) ->
     io:format("Tie ~n"),
-    #{ties := Ties} = Data,
-    NewData = Data#{ ties := Ties + 1 },
+    #{ties := Ties, hasChoosen := HasChoosen} = Data,
+    NewData = Data#{ ties := Ties + 1, hasChoosen := {}},
     {next_state, idle, NewData, [
-        {reply, Player2, tie}, 
-        {reply, Player1, tie}
+        {reply, From, tie}, 
+        {reply, HasChoosen, tie}
     ]}.
 
 nontie(Data, Winner, Loser, WinningMove) ->
     {WinnerPid, _} = Winner,
     {LoserPid, _} = Loser,
-    #{ nonties := NonTies, bestOf := BestOf, WinnerPid := WinnerWins, LoserPid := LoserWins} = Data, 
+    #{ nonties := NonTies,
+       ties := Ties,
+       bestOf := BestOf,
+       brooker := BrookerRef,
+       WinnerPid := WinnerWins, 
+       LoserPid := LoserWins} = Data, 
     NewWinnerWins = WinnerWins + 1, 
     NewNonTies = NonTies + 1,
-    NewData = Data#{ nonties := NewNonTies, WinnerPid := NewWinnerWins},  
-    case NonTies + 1 == BestOf of
-        true ->  
-            {next_state, idle, NewData, [
+    NewData = Data#{ nonties := NewNonTies, WinnerPid := NewWinnerWins, hasChoosen := {}}, 
+    case NewNonTies > BestOf / 2 of
+        true -> 
+            gen_statem:call(BrookerRef, {game_over, Ties + NewNonTies}),
+            % ! Use stop_and_reply
+            {next_state, game_over, NewData, [
                 {reply, Winner, {game_over, NewWinnerWins, NewNonTies - NewWinnerWins}}, 
                 {reply, Loser, {game_over, LoserWins, NewNonTies - LoserWins}}
-        ]}; 
+            ]}; 
         false ->  
             {next_state, idle, NewData, [
                 {reply, Winner, win}, 

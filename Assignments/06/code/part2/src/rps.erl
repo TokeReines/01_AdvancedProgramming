@@ -2,8 +2,8 @@
 
 -behaviour(gen_server).
 
-% -import(coordinator, [move/1, start/1]).
--export([test/0]).
+-import(coordinator, [move/1, start/1, stop_coordinator/1]).
+-export([test/0, test_setup/0, stop/1]).
 -export([start/0, queue_up/3, move/2, statistics/1, drain/3]).
 -export([init/1, handle_call/3, handle_cast/2]).
 
@@ -13,6 +13,9 @@
 
 start() ->
     gen_server:start_link(?MODULE, [], []).
+
+stop(Coordinator) -> 
+    gen_server:stop(Coordinator).
 
 queue_up(BrokerRef, Name, Rounds) ->
     gen_server:call(BrokerRef, {queue_up, Name, Rounds}, infinity).
@@ -34,12 +37,13 @@ drain(BrokerRef, Pid, Msg) ->
 
 init(_Args) ->
     {ok, #{longestGame => 0, 
-           inQueue => [],  % Consider using a map or similar
+           inQueue => #{},  % Consider using a map or similar
            ongoing => [],
-           isDraining => false}}.
+           isDraining => false,
+           drainMessage => {}}}.
 
 %%% -------------------- Queue Up -------------------------
-handle_call({queue_up, Player1Name, Rounds}, Player1Pid, State) ->
+handle_call({queue_up, Player1Name, Rounds}, Player1Ref, State) ->
     #{inQueue := Queue, 
       ongoing := Ongoing,
       isDraining := IsDraining} = State,
@@ -51,32 +55,41 @@ handle_call({queue_up, Player1Name, Rounds}, Player1Pid, State) ->
       Rounds < 1 -> 
         {reply, {error, "Number of rounds has to be greater thant 1"}, State};
       true ->   
-        case lists:keyfind(Rounds, 2, Queue)  of
+        case maps:get(Rounds, Queue, false)  of
             false ->  
-                NewQueue = [{Player1Name, Rounds, Player1Pid} | Queue], 
+                NewQueue = Queue#{Rounds => {Player1Name, Player1Ref}}, 
                 NewState = State#{inQueue := NewQueue},
-                io:format("State: ~w ~n", [NewState]),
                 {noreply, NewState};
-            {Player2Name, _, Player2Pid} ->  
-                {ok, Cid} = coordinator:start({Player1Name, Player1Pid}, {Player2Name, Player2Pid}, Rounds),
+            {Player2Name, Player2Ref} ->  
+                {ok, Cid} = coordinator:start(Player1Ref, Player2Ref, Rounds, self()),
                 NewOngoing = [Cid | Ongoing],
-                NewQueue = lists:keydelete(Rounds, 2, Queue),
+                NewQueue = maps:remove(Rounds, Queue),
                 NewState = State#{inQueue := NewQueue, ongoing := NewOngoing},
-                io:format("State: ~w ~n", [NewState]),
-                gen_server:reply(Player2Pid, {ok, Player2Name, Cid}),
-                {reply, {ok, Player1Name, Cid}, NewState}
+                gen_server:reply(Player2Ref, {ok, Player1Name, Cid}),
+                {reply, {ok, Player2Name, Cid}, NewState}
         end
     end;
 
 %%% -------------------- Statistics -----------------------
-handle_call(statistics, _From, State) ->
+handle_call(statistics, From, State) ->
+    io:format("~w~n", [From]),
     #{longestGame := LongestGame,
       inQueue     := InQueue, 
       ongoing     := Ongoing} = State,
-    Reply = {ok, LongestGame, length(InQueue), length(Ongoing)},
+    Reply = {ok, LongestGame, maps:size(InQueue), length(Ongoing)},
     {reply, Reply, State};
 
-%%% -------------- Coordinator drained --------------------
+%%% ---------------- Stop Coordinator ---------------------
+handle_call({game_over, Rounds}, From, State) ->
+  #{longestGame := LongestGame, 
+    ongoing     := Ongoing} = State,
+  {Cid, _} = From,
+  NewOngoing = lists:delete(Cid, Ongoing),
+  case LongestGame < Rounds of
+      true ->  NewState = State#{longestGame := Rounds, ongoing := NewOngoing};
+      false -> NewState = State#{ongoing := NewOngoing}
+  end,
+  {reply, ok, NewState};
 
 
 %%% ---------------- Catch all call -----------------------
@@ -86,18 +99,31 @@ handle_call(Request, From, State) ->
 
 
 %%% ---------------- Drain -----------------------
-handle_cast(drain, State) ->
+handle_cast({drain, Pid, Msg}, State) ->
     #{inQueue     := InQueue, 
       ongoing     := Ongoing} = State,
-    lists:foreach(fun(Elem) -> 
-            {_, _, QPid} = Elem,
+    io:format("Draining~n"),
+    maps:foreach(fun(_Key, Value) -> 
+            {_, QPid} = Value,
             gen_server:reply(QPid, server_stopping)
         end, InQueue),
     lists:foreach(fun(Cid) -> 
             coordinator:drain_coordinator(Cid)
         end, Ongoing),
-    NewState = State#{inQueue := [], isDraining := true},
+    NewState = State#{inQueue := #{}, isDraining := true, drainMessage := {Pid, Msg}},
     {noreply, NewState};
+   
+handle_cast({coordinator_drained, Cid}, State) -> 
+    #{ongoing := Ongoing, drainMessage := DrainMessage} = State, 
+    {Pid, Msg} = DrainMessage,
+    io:format("coordinator_drained~n"),
+    NewOngoing = lists:delete(Cid, Ongoing),
+    case NewOngoing =:= [] of
+      true ->
+          Pid ! Msg, 
+          {stop, normal, State#{ongoing := NewOngoing}};
+      false -> {noreply, State#{ongoing := NewOngoing}}
+    end;
 
 %%% ---------------- Catch all cast -----------------------
 handle_cast(Request, State) ->
@@ -108,37 +134,54 @@ handle_cast(Request, State) ->
 
 test() -> 
     {ok, BrokerRef} = start(),
+    io:format("Server id: ~w ~n", [BrokerRef]),
     spawn(fun() -> 
             {ok, Res, CPid} = queue_up(BrokerRef, "P1", 3),
             io:format("P1: ~w ~n", [Res]),     
-            Res1 = move(CPid, rock),
-            io:format("P1: ~w ~n", [Res1]), 
-            Res2 = move(CPid, rock),
-            io:format("P1: ~w ~n", [Res2]),    
-            Res3 = move(CPid, rock),
-            io:format("P1: ~w ~n", [Res3])
-          end),       
-    spawn(fun() -> 
-            {ok, Res, CPid} = queue_up(BrokerRef, "P2", 2),
-            io:format("P2: ~w ~n", [Res]),
-            Res1 = move(CPid, paper),
-            io:format("P2: ~w ~n", [Res1]),  
-            Res2 = move(CPid, paper),
-            io:format("P2: ~w ~n", [Res2]),    
-            Res3 = move(CPid, paper),
-            io:format("P2: ~w ~n", [Res3])
-          end),       
-    spawn(fun() -> 
-            {ok, Res, CPid} = queue_up(BrokerRef, "P3", 3),
-            io:format("P3: ~w ~n", [Res]),
             Res1 = move(CPid, scissor),
-            io:format("P3: ~w ~n", [Res1]),    
+            io:format("P1: ~w ~n", [Res1]), 
             Res2 = move(CPid, scissor),
-            io:format("P3: ~w ~n", [Res2]),    
+            io:format("P1: ~w ~n", [Res2]),    
             Res3 = move(CPid, scissor),
-            io:format("P3: ~w ~n", [Res3])
-          end).
+            io:format("P1: ~w ~n", [Res3])
+          end),
+      spawn_link(fun() -> rock_bot:queue_up_and_play(BrokerRef) end).
+    % spawn(fun() -> 
+    %         {ok, Res, CPid} = queue_up(BrokerRef, "P2", 2),
+    %         io:format("P2: ~w ~n", [Res]),
+    %         Res1 = move(CPid, paper),
+    %         io:format("P2: ~w ~n", [Res1]),  
+    %         Res2 = move(CPid, paper),
+    %         io:format("P2: ~w ~n", [Res2]),    
+    %         Res3 = move(CPid, paper),
+    %         io:format("P2: ~w ~n", [Res3])
+    %       end),       
+    % spawn(fun() -> 
+    %         {ok, Res, CPid} = queue_up(BrokerRef, "P3", 3),
+    %         io:format("P3: ~w ~n", [Res]),
+    %         Res1 = move(CPid, scissor),
+    %         io:format("P3: ~w ~n", [Res1]),    
+    %         Res2 = move(CPid, scissor),
+    %         io:format("P3: ~w ~n", [Res2]),    
+    %         Res3 = move(CPid, scissor),
+    %         io:format("P3: ~w ~n", [Res3])
+    %       end).
     % spawn(fun() -> 
     %     Res = rps:statistics(BrokerRef),
     %     io:format("Statistics: ~w ~n", [Res])
     %   end).       
+    % 
+    % 
+% Spawn bot:
+% {ok, A} = rps:start().
+% spawn_link(fun() -> rock_bot:queue_up_and_play(A) end).
+% {ok, _, C} = rps:queue_up(A, "Julian", 3).
+% rps:move(C, scissor).
+% rps:drain(A, test, test).
+% rps:statistics(A).
+% 
+test_setup() -> 
+    {ok, A} = rps:start(),
+    spawn_link(fun() -> rock_bot:queue_up_and_play(A) end),
+    {ok, _, C} = rps:queue_up(A, "Julian", 3),
+    {A, C}.
