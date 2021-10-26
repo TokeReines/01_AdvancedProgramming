@@ -14,9 +14,6 @@
 start() ->
     gen_server:start_link(?MODULE, [], []).
 
-stop(Coordinator) -> 
-    gen_server:stop(Coordinator).
-
 queue_up(BrokerRef, Name, Rounds) ->
     gen_server:call(BrokerRef, {queue_up, Name, Rounds}, infinity).
 
@@ -35,6 +32,8 @@ statistics(BrokerRef) ->
 -spec drain(pid(), pid() | 'none', string()) -> term().
 drain(BrokerRef, Pid, Msg) ->
     gen_server:cast(BrokerRef, {drain, Pid, Msg}).
+
+stop(BrokerRef) -> {gen_server:stop(BrokerRef)}.
 
 %%% -------------------------------------------------------
 %%% Callback Functions

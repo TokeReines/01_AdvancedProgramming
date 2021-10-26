@@ -2,7 +2,7 @@
 
 -behaviour(gen_statem).
 
--export([start/4, move/2, drain_coordinator/1, stop_coordinator/1]).
+-export([start/4, move/2, drain_coordinator/1, stop/1]).
 -export([callback_mode/0, init/1]).
 -export([idle/3, rock/3, paper/3, scissor/3, invalid_choice/3, draining/3]).
 
@@ -20,7 +20,7 @@ drain_coordinator(Coordinator) ->
     io:format("Drain Coordinator ~n"),
     gen_statem:cast(Coordinator, drain).
 
-stop_coordinator(Coordinator) ->
+stop(Coordinator) ->
     gen_statem:stop(Coordinator).
 
 %%% -------------------------------------w------------------

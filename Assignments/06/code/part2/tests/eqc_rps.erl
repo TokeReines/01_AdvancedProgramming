@@ -21,16 +21,50 @@ check_commands(Cmds, {_, _, Res} = HSRes) ->
   pretty_commands(?MODULE, Cmds, HSRes,
                   aggregate(command_names(Cmds),
                             equals(Res, ok))).
-  
 
-cleanup(_S) -> 
-  ok.
+%%% -----------------------------------------------
+%%% Model
+%%% -----------------------------------------------
 
+-type rps_model() :: #{ serv := none | pid()
+                      , coords := list(pid()) 
+                      , queue := #{	integer() => pid()}
+                      }.
+cleanup(#{ serv := none, coords := [] }) ->
+  ok;
+cleanup(#{ serv := RpsServ, coords := Coords }) ->
+  lists:foreach(fun(Coord) -> coordinator:stop(Coord) end, Coords),
+  rps:stop(RpsServ).
+
+-spec initial_state() -> rps_model().
 initial_state() ->
-  #{}.
+  #{ serv => none, coords => [], queue => #{} }.
 
-command(_S) -> 
-  oneof([]).
+%%% ----------------------------------------------
+%%% Generators
+%%% ---------------------------------------------
+
+name() -> elements([$a, $m]).
+rounds() -> frequency([{1, return(0)},
+                       {5, choose(1,5)}]).
+
+%%% ---------------------------------------------
+%%% Statem callbacks
+%%% ---------------------------------------------
+
+-spec command(_) -> any().
+command( #{ serv := none }) ->
+  return({call, rps, start, [] });
+command( #{ serv := BrokerRef }) -> 
+  oneof([ {call, rps, queue_up, [BrokerRef, name(), rounds()]}
+    
+        ]).
+
+next_state(S, {ok, BrokerRef}, {call, rps, start, _}) ->
+  S#{ serv := BrokerRef };
+
+next_state(S, V, {call, rps, queue_up, []}) ->
+  S#{ serv := V };
 
 next_state(S, _, _) ->
   S.
