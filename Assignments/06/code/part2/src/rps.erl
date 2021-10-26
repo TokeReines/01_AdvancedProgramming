@@ -76,8 +76,7 @@ handle_call({queue_up, Player1Name, Rounds}, Player1Ref, State) ->
     end;
 
 %%% -------------------- Statistics -----------------------
-handle_call(statistics, From, State) ->
-    io:format("~w~n", [From]),
+handle_call(statistics, _From, State) ->
     #{longestGame := LongestGame,
       inQueue     := InQueue, 
       ongoing     := Ongoing} = State,
