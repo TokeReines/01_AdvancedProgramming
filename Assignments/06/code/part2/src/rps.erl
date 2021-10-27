@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 -import(coordinator, [move/1, start/1, stop_coordinator/1]).
--export([test/0, test_setup/0, stop/1, test_setup2/0, test2/0]).
+-export([stop/1]).
 -export([start/0, queue_up/3, move/2, statistics/1, drain/3]).
 -export([init/1, handle_call/3, handle_cast/2]).
 
@@ -84,7 +84,7 @@ handle_call(statistics, _From, State) ->
   
 
 %%% ---------------- Catch all call -----------------------
-handle_call(Request, From, State) ->
+handle_call(_Request, _From, State) ->
     {reply, clientReply, State}.
 
 
@@ -145,5 +145,5 @@ handle_cast({game_over, Rounds, Cid}, State) ->
   end;
 
 %%% ---------------- Catch all cast -----------------------
-handle_cast(Request, State) ->
+handle_cast(_Request, State) ->
     {noreply, State}.

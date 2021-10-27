@@ -86,7 +86,7 @@ rps_statistics(BrokerRef) ->
   timer:sleep(1),
   rps:statistics(BrokerRef). 
 
--spec move_gen(map(pid()), list(pid())) -> {pid(), pid()}.
+% -spec move_gen(map(pid()), list(pid())) -> {pid(), pid()}.
 move_gen(Coordinators, Players) -> 
     {oneof(Coordinators), oneof(Players)}.
     % Players = list(Pids
@@ -155,7 +155,6 @@ next_state(#{queue :=  Queue, ongoing := Ongoing, coordinators := Coordinators, 
     true ->
       S#{ queue := model_queue_up(Queue, Name, Rounds)
         , ongoing := model_match_started(Queue, Rounds, Ongoing)
-        , coordinators := [CoordinatorPid || Coordinators]
         , players := [PlayerPid || Players]
         };
     false -> S
@@ -166,8 +165,6 @@ next_state(#{queue :=  Queue, ongoing := Ongoing} = S, CoordinatorId, {call, _, 
     true ->
       S#{ queue := model_queue_up(Queue, Name, Rounds)
         , ongoing := model_match_started(Queue, Rounds, Ongoing)
-        , coordinators := [CoordinatorPid || Coordinators]
-        , players := [self() || Players]
         };
     false -> S
   end;
