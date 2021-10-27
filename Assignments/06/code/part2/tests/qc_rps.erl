@@ -33,7 +33,8 @@ check_commands(Cmds, {_,_,Res} = HSRes) ->
 
 -type rps_model() :: #{ serv := none | pid()
                       , coords := list(pid()) 
-                      , queue := #{	integer() => string()}
+                      , queue := #{	integer() := string()}
+                      , ongoing := integer()
                       }.
 cleanup(#{ serv := none, coords := [] }) ->
   ok;
@@ -43,7 +44,7 @@ cleanup(#{ serv := RpsServ, coords := Coords }) ->
 
 -spec initial_state() -> rps_model().
 initial_state() ->
-  #{ serv => none, coords => [], queue => #{} }.
+  #{ serv => none, coords => [], queue => #{}, ongoing => 0 }.
 
 
 rps_start() -> 
@@ -54,18 +55,30 @@ spawn_queue_up(BrokerRef, Name, Rounds) ->
   spawn(fun() -> rps:queue_up(BrokerRef, Name, Rounds) end).
 
 model_queue_up(Queue, Name, Rounds) -> 
-    case maps:get(Rounds, Queue, false) of
-        false ->  
-            Queue#{Rounds => Name};
-        _ ->  
-            maps:remove(Rounds, Queue)
-    end.
+  if 
+    Rounds > 0 ->
+      case maps:get(Rounds, Queue, false) of
+        false -> Queue#{Rounds => Name};
+        _     -> maps:remove(Rounds, Queue)
+      end;
+    true -> Queue
+  end.
+
+model_match_started(Queue, Rounds, Ongoing) ->
+  if
+    Rounds > 0 ->
+      case maps:get(Rounds, Queue, false) of
+        false -> Ongoing;
+        _     -> Ongoing + 1
+      end;
+    true -> Ongoing
+  end.
 
 model_is_queued(Queue, Rounds) ->
-    case maps:get(Rounds, Queue, false) of
-        false -> false;
-        _ -> true
-    end.
+  case maps:get(Rounds, Queue, false) of
+    false -> false;
+    _     -> true
+  end.
 
 %%% ----------------------------------------------
 %%% Generators
@@ -77,6 +90,21 @@ rounds() -> frequency([{1, return(0)},
 
 rounds(Queue) -> elements(maps:keys(Queue)).
 
+% moves() -> elements([rock, paper, scissor]).
+
+% queue_up_and_play(BrokerRef, Name, Rounds) ->
+%   {ok, _Other, Coor} = rps:queue_up(BrokerRef, Name, Rounds),
+%   random_rps_to_game_over(Coor).
+
+% random_rps_to_game_over(Coor) ->
+%   case rps:move(Coor, moves()) of
+%       {game_over, Me, SomeLoser} ->
+%           {ok, Me, SomeLoser};
+%       server_stopping ->
+%           server_stopping;
+%       _ -> random_rps_to_game_over(Coor)
+%   end.
+
 %%% ---------------------------------------------
 %%% Statem callbacks
 %%% ---------------------------------------------
@@ -87,7 +115,9 @@ command( #{ serv := BrokerRef, queue := Queue }) ->
   oneof(
     [{call, rps, queue_up, [BrokerRef, name(), rounds(Queue)]} || maps:keys(Queue) /= []]
     ++ 
-    [ {call, ?MODULE, spawn_queue_up, [BrokerRef, name(), rounds()]} ]).
+    [ {call, ?MODULE, spawn_queue_up, [BrokerRef, name(), rounds()]} 
+    , {call, rps, statistics, [BrokerRef]} 
+    ]).
 
 next_state(S, V, {call, _, rps_start, _}) ->
   S#{ serv := V };
@@ -95,20 +125,28 @@ next_state(S, V, {call, _, rps_start, _}) ->
 next_state(S, _V, {call, _, statistics, _}) ->
   S;
 
-next_state(#{queue :=  Queue} = S, _V, {call, _, spawn_queue_up, [_, Name, Round]}) ->
-  S#{queue := model_queue_up(Queue, Name, Round)}; % ! If a match is started, match sould be added to the ongoing
+next_state(#{queue :=  Queue, ongoing := Ongoing} = S, _V, {call, _, spawn_queue_up, [_, Name, Rounds]}) ->
+  S#{ queue := model_queue_up(Queue, Name, Rounds)
+    , ongoing := model_match_started(Queue, Rounds, Ongoing)
+    };
 
-next_state(#{queue :=  Queue} = S, _V, {call, rps, queue_up, [_, Name, Round]}) ->
-  S#{queue := model_queue_up(Queue, Name, Round)}; % ! If a match is started, match sould be added to the ongoing
-
-
-% next_state(S, V, {call, rps, queue_up, []}) ->
-%   S#{ serv := V };
+next_state(#{queue :=  Queue, ongoing := Ongoing} = S, V, {call, rps, queue_up, [_, Name, Rounds]}) ->
+  io:format("~w~n", [eval(V)]),
+  S#{ queue := model_queue_up(Queue, Name, Rounds)
+    , ongoing := model_match_started(Queue, Rounds, Ongoing)
+    };
 
 next_state(S, _, _) ->
   S.
 
 precondition(_, _) -> true.
+
+% postcondition(#{queue := Queue, ongoing := Ongoing} = _S, {call, rps, statistics, _}, Res) -> 
+%   {ok, _, ResInQueue, ResOngoing} = Res,
+%   % io:format("~w,~w,~w,~w,~w~n", [Res,ResInQueue, ResOngoing, maps:size(Queue), Ongoing]),
+%   % ! There is racecondition where quede up players isn't qeuede up before statistics is called. 
+%   % (ResInQueue =< maps:size(Queue)) and (ResOngoing =< Ongoing);
+%   {ResInQueue, ResOngoing} =:= {maps:size(Queue), Ongoing};
 
 postcondition(#{queue := Queue} = _S, {call, rps, queue_up, [_, Name, Rounds]}, Res) -> 
     case model_is_queued(Queue, Name) of
