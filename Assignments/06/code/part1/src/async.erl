@@ -1,4 +1,4 @@
--module(server).
+-module(async).
 -behaviour(gen_statem).
 
 -export([callback_mode/0, init/1]).
@@ -25,22 +25,13 @@ wait(Aid) ->
         {error, ErrorMessage} -> error(ErrorMessage)
     end.
 
-wait_catch(Aid) -> 
-    A = gen_statem:call(Aid, wait),
-    case A of
-        {ok, Value} -> {ok, Value};
-        {throw, ErrorMessage} -> {exception, ErrorMessage};
-        {exit, ErrorMessage} -> {exception, ErrorMessage};
-        {error, ErrorMessage} -> {exception, ErrorMessage}
-    end.
-
 %     Work:
 %     Spawn a process calling wait(Aid) for all Aids
 %     receive (block) and return the received value 
 
 
 wait_any(Aids) -> 
-    Work = fun(A) ->    
+    Work = fun(_) ->    
         Self = self(),
         [ spawn_link(fun() -> Self ! {Aid, wait(Aid)} end) || Aid <- Aids],
         io:format("Inside Work! ~n"),
@@ -53,7 +44,7 @@ wait_any(Aids) ->
                 ok
         end
     end,     
-    Async = new(Work, 1),
+    Async = new(Work, unicorn),
     {ok, {Aid, Data}} = wait(Async),
     {Aid, Data}.
 
@@ -74,7 +65,7 @@ callback_mode() -> state_functions.
 
 %%% -------------------- Failed ---------------------------
 
-processing({call, From}, wait, Data) -> 
+processing({call, _From}, wait, Data) -> 
     io:format("Waiting ~n"),
     {keep_state, Data, [{postpone, true}]};
 
@@ -83,12 +74,12 @@ processing({call, From}, poll, Data) ->
     {keep_state, Data, [{reply, From, nothing}]};
 
 %% Used by the worker to signal when function has finished
-processing(cast, {finished, Result}, Data) -> 
+processing(cast, {finished, Result}, _Data) -> 
     io:format("Worker Finished! ~n"),
     {next_state, finished, {ok, Result}};
 
 %% Used by the worker to signal if function has failed
-processing(cast, {failed, {FailedWith, Message}}, Data) -> 
+processing(cast, {failed, {FailedWith, Message}}, _Data) -> 
     io:format("Worker Failed! ~n"),
     {next_state, failed, {FailedWith, Message}}.
 
