@@ -17,25 +17,14 @@ move(Coordinator, Choice) ->
     gen_statem:call(Coordinator, Choice).
 
 drain_coordinator(Coordinator) -> 
-    io:format("Drain Coordinator ~n"),
     gen_statem:cast(Coordinator, drain).
 
 stop(Coordinator) ->
     gen_statem:stop(Coordinator).
 
-%%% -------------------------------------w------------------
+%%% -------------------------------------------------------
 %%% Mandatory callback functions
 %%% -------------------------------------------------------
-
-% Broker data: [#{playerN => CoordinatorId}]
-
-%[#{player1Pid => {RoundsWon},
-%   player2Pid => {RoundWon},
-%   bestOf => NRounds,
-%   wins => N,
-%   ties => NRounds,
-%   brokerRef => brokerRef
-%   }]
 
 % State = PlayerNames and list of round won, Number of best-of-Rounds,
 init({Player1Ref, Player2Ref, NRounds, BrokerRef}) ->
@@ -60,25 +49,21 @@ callback_mode() -> state_functions.
 %%% -------------------------------------------------------
 
 idle({call, From}, Choice, Data) ->
-    io:format("Idle State, played: ~w ~n", [Choice]),
     IsAllowedToPlay = is_allowed_player(From, Data),
     if
       IsAllowedToPlay -> 
         case lists:member(Choice, [rock, paper, scissor]) of
             true -> {next_state, Choice, Data#{firstMover := From}};
             false -> 
-                io:format("You made an invalid move ~w?. ~n", [Choice]),
                 {next_state, invalid_choice, Data#{firstMover := From}}
         end;
       true -> {keep_state, Data}
     end;
 
 idle(cast, drain, Data) -> 
-    io:format("Idle State, draining ~n"),
     {next_state, draining, Data}.
 
 rock({call, From}, Choice, Data) ->
-    io:format("Rock State, played: ~w ~n", [Choice]),
     IsAllowedToPlay = is_allowed_player(From, Data),
     if 
       IsAllowedToPlay ->
@@ -93,11 +78,9 @@ rock({call, From}, Choice, Data) ->
     end;
 
 rock(cast, drain, Data) -> 
-    io:format("Rock State, draining ~n"),
     {next_state, draining, Data}.
 
 paper({call, From}, Choice, Data) ->
-    io:format("Paper State, played: ~w ~n", [Choice]),
     IsAllowedToPlay = is_allowed_player(From, Data),
     if
       IsAllowedToPlay ->
@@ -112,11 +95,9 @@ paper({call, From}, Choice, Data) ->
     end;
 
 paper(cast, drain, Data) -> 
-    io:format("Paper State, draining ~n"),
     {next_state, draining, Data}.
 
 scissor({call, From}, Choice,  Data) ->
-    io:format("Scissor State, played: ~w ~n", [Choice]),
     IsAllowedToPlay = is_allowed_player(From, Data),
     if 
       IsAllowedToPlay -> 
@@ -131,11 +112,9 @@ scissor({call, From}, Choice,  Data) ->
     end;
 
 scissor(cast, drain, Data) -> 
-    io:format("Scissor State, draining ~n"),
     {next_state, draining, Data}.
 
 invalid_choice({call, From}, Choice, Data) ->
-    io:format("Invalid Choice State, played: ~w ~n", [Choice]),
     IsAllowedToPlay = is_allowed_player(From, Data),
     if 
       IsAllowedToPlay -> 
@@ -150,14 +129,12 @@ invalid_choice({call, From}, Choice, Data) ->
     end;
 
 invalid_choice(cast, drain, Data) -> 
-    io:format("Invalid choice state, draining ~n"),
     {next_state, draining, Data}.
 
 % game_over(cast, drain, Data) -> {next_state, draining, Data};
 % game_over({call, _From}, _, Data) -> {keep_state, Data}.
 
 draining({call, From}, _, Data) ->
-    io:format("Draining State"),
     IsAllowedToPlay = is_allowed_player(From, Data),
     #{firstMover := FirstMover, broker := BrokerRef} = Data,
     if 
@@ -166,10 +143,8 @@ draining({call, From}, _, Data) ->
           NewData = maps:remove(Pid, Data),
           case FirstMover =:= {} of
             true -> 
-                io:format("No FirstMover~n"),
                 {keep_state, NewData#{firstMover := From}};
             false -> 
-                io:format("Casting draing to brokerref~n"),
                 gen_statem:cast(BrokerRef, {coordinator_drained, self()}),
                 {stop_and_reply, normal, [{reply, From, server_stopping}, 
                                         {reply, FirstMover, server_stopping}]}
@@ -187,7 +162,6 @@ is_allowed_player(PlayerRef, Data) ->
     maps:is_key(PlayerPid, Data).
 
 tie(Data, From) ->
-    io:format("Tie ~n"),
     #{ties := Ties, firstMover := FirstMover} = Data,
     NewData = Data#{ ties := Ties + 1, firstMover := {}},
     {next_state, idle, NewData, [
@@ -209,18 +183,10 @@ nontie(Data, Winner, Loser, WinningMove) ->
     NewData = Data#{ nonties := NewNonTies, WinnerPid := NewWinnerWins, firstMover := {}}, 
     case NewNonTies > BestOf / 2 of
         true -> 
-            io:format("Nontie, game over - cast to rbroker ~n"),
             gen_statem:cast(BrokerRef, {game_over, Ties + NewNonTies, self()}),
-            % ! Use stop_and_reply
-            % {next_state, game_over, NewData, [
-            %     {reply, Winner, {game_over, NewWinnerWins, NewNonTies - NewWinnerWins}}, 
-            %     {reply, Loser, {game_over, LoserWins, NewNonTies - LoserWins}}
-            % ]};
-            io:format("Nontie, game over, stop and reply ~n"),
             {stop_and_reply, normal, [{reply, Winner, {game_over, NewWinnerWins, NewNonTies - NewWinnerWins}}, 
                  {reply, Loser, {game_over, LoserWins, NewNonTies - LoserWins}}]}; 
         false ->  
-            io:format("Nontie, more games to play ~n"),
             {next_state, idle, NewData, [
                 {reply, Winner, win}, 
                 {reply, Loser, {loss, WinningMove}}

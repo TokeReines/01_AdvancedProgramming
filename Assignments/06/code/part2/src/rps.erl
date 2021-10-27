@@ -19,11 +19,10 @@ queue_up(BrokerRef, Name, Rounds) ->
 
 -spec move(pid(), term()) -> term().
 move(Coordinator, Choice) ->
-    % gen_server:call(move, {Coordinator, Choice}).
     try
       coordinator:move(Coordinator, Choice)
     catch
-      _ : _ ->  io:format("ERROR"), error
+      _ : _ ->  error
     end.
 
 statistics(BrokerRef) ->
@@ -86,7 +85,6 @@ handle_call(statistics, _From, State) ->
 
 %%% ---------------- Catch all call -----------------------
 handle_call(Request, From, State) ->
-    io:format("CATCH ALL ~w, ~w, ~w  ~n", [Request, From, State]),
     {reply, clientReply, State}.
 
 
@@ -94,7 +92,6 @@ handle_call(Request, From, State) ->
 handle_cast({drain, Pid, Msg}, State) ->
     #{inQueue     := InQueue, 
       ongoing     := Ongoing} = State,
-    io:format("Draining~n"),
     maps:foreach(fun(_Key, Value) -> 
             {_, QPid} = Value,
             gen_server:reply(QPid, server_stopping)
@@ -102,7 +99,6 @@ handle_cast({drain, Pid, Msg}, State) ->
     lists:foreach(fun(Cid) -> 
             coordinator:drain_coordinator(Cid)
         end, Ongoing),
-    io:format("Ongoing lenght: ~w, ~n", [Ongoing]),
     case Ongoing =:= [] of
       true -> Pid ! Msg,
               {stop, normal, State};        
@@ -114,15 +110,12 @@ handle_cast({drain, Pid, Msg}, State) ->
 handle_cast({coordinator_drained, Cid}, State) -> 
     #{ongoing := Ongoing, drainMessage := DrainMessage} = State, 
     {Pid, Msg} = DrainMessage,
-    io:format("coordinator_drained~n"),
     NewOngoing = lists:delete(Cid, Ongoing),
     case NewOngoing =:= [] of
       true ->
-          io:format("On going is empty ~w ~w~n", [Pid, Msg]),
           Pid ! Msg, 
           {stop, normal, State};
       false -> 
-      io:format("On going is NOT empty ~w ~w~n", [Pid, Msg]),
         {noreply, State#{ongoing := NewOngoing}}
     end;
 
@@ -136,19 +129,15 @@ handle_cast({game_over, Rounds, Cid}, State) ->
   NewOngoing = lists:delete(Cid, Ongoing),
   case IsDraining of
     true -> 
-      io:format("Isdraining ~n"),
       {Pid, Msg} = DrainMessage,
       case NewOngoing =:= [] of
         true ->
-            io:format("Empty ongoing! ~n"),
             Pid ! Msg, 
             {stop, normal, State};
         false -> 
-          io:format("Not empty ongoing ~n"),
           {noreply, State#{ongoing := NewOngoing}}
       end;
     false ->
-      io:format("NOT DRAINING ~n"),
       case LongestGame < Rounds of
           true ->  {noreply, State#{longestGame := Rounds, ongoing := NewOngoing}};
           false -> {noreply, State#{ongoing := NewOngoing}}
@@ -157,82 +146,4 @@ handle_cast({game_over, Rounds, Cid}, State) ->
 
 %%% ---------------- Catch all cast -----------------------
 handle_cast(Request, State) ->
-    io:format("CATCH ALL CAST~w, ~w~n", [Request, State]),
     {noreply, State}.
-
-
-
-test() -> 
-    {ok, BrokerRef} = start(),
-    io:format("Server id: ~w ~n", [BrokerRef]),
-    spawn(fun() -> 
-            {ok, Res, CPid} = queue_up(BrokerRef, "P1", 3),
-            io:format("P1: ~w ~n", [Res]),     
-            Res1 = move(CPid, scissor),
-            io:format("P1: ~w ~n", [Res1]), 
-            Res2 = move(CPid, scissor),
-            io:format("P1: ~w ~n", [Res2]),    
-            Res3 = move(CPid, scissor),
-            io:format("P1: ~w ~n", [Res3])
-          end),
-      spawn_link(fun() -> rock_bot:queue_up_and_play(BrokerRef) end).
-    % spawn(fun() -> 
-    %         {ok, Res, CPid} = queue_up(BrokerRef, "P2", 2),
-    %         io:format("P2: ~w ~n", [Res]),
-    %         Res1 = move(CPid, paper),
-    %         io:format("P2: ~w ~n", [Res1]),  
-    %         Res2 = move(CPid, paper),
-    %         io:format("P2: ~w ~n", [Res2]),    
-    %         Res3 = move(CPid, paper),
-    %         io:format("P2: ~w ~n", [Res3])
-    %       end),       
-    % spawn(fun() -> 
-    %         {ok, Res, CPid} = queue_up(BrokerRef, "P3", 3),
-    %         io:format("P3: ~w ~n", [Res]),
-    %         Res1 = move(CPid, scissor),
-    %         io:format("P3: ~w ~n", [Res1]),    
-    %         Res2 = move(CPid, scissor),
-    %         io:format("P3: ~w ~n", [Res2]),    
-    %         Res3 = move(CPid, scissor),
-    %         io:format("P3: ~w ~n", [Res3])
-    %       end).
-    % spawn(fun() -> 
-    %     Res = rps:statistics(BrokerRef),
-    %     io:format("Statistics: ~w ~n", [Res])
-    %   end).       
-    % 
-    % 
-% Spawn bot:
-% {ok, A} = rps:start().
-% spawn_link(fun() -> rock_bot:queue_up_and_play(A) end).
-% {ok, _, C} = rps:queue_up(A, "Julian", 3).
-% rps:move(C, scissor).
-% rps:drain(A, test, test).
-% rps:statistics(A).
-% 
-test_setup() -> 
-    {ok, A} = rps:start(),
-    spawn_link(fun() -> rock_bot:queue_up_and_play(A) end),
-    {ok, _, C} = rps:queue_up(A, "Julian", 3),
-    rps:move(C, paper),
-    rps:drain(A, self(), "Stahpping"),
-    io:format("Playing paper"),
-    rps:move(C, paper),
-    receive
-        Msg -> io:format("Receiving Drain ~w, ~n", [Msg])
-    end,
-    {A, C}.
-
-test_setup2() -> 
-    {ok, A} = rps:start(),
-    spawn_link(fun() -> rock_bot:queue_up_and_play(A) end),
-    {ok, _, C} = rps:queue_up(A, "Julian", 3),
-    rps:move(C, paper),
-    rps:drain(A, self(), "Stahpping"),
-    {A, C}.
-
-test2() ->
-  {ok, A} = rps:start(),
-  spawn((fun() -> rps:queue_up(A, "a", 1) end)),
-  timer:sleep(100),
-  rps:statistics(A).
