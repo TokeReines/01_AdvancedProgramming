@@ -3,7 +3,6 @@
 -behaviour(gen_server).
 
 -import(coordinator, [move/1, start/1, stop_coordinator/1]).
--export([test/0, test_setup/0, stop/1, test_setup2/0, test2/0]).
 -export([start/0, queue_up/3, move/2, statistics/1, drain/3]).
 -export([init/1, handle_call/3, handle_cast/2]).
 
