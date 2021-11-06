@@ -3,6 +3,22 @@ module ParserImpl where
 import Absyn
 
 import Text.ParserCombinators.ReadP
+    ( ReadP,
+      between,
+      chainl1,
+      chainr1,
+      char,
+      choice,
+      eof,
+      many,
+      munch,
+      munch1,
+      pfail,
+      readP_to_S,
+      satisfy,
+      sepBy1,
+      skipMany,
+      string )
 import Control.Applicative ((<|>))
 import Data.Char (toLower, isAlpha, isAscii, isDigit)
 import Text.Parsec.Prim (parserBind)
@@ -41,6 +57,7 @@ keywordCI s = lexeme $
        notFollowedByAny (\c -> isLetter c || isDigit c || c == '-')
 
 -- Check whether c is an ASCII letter (a-z, A-Z)
+isLetter :: Char -> Bool
 isLetter c = isAscii c && isAlpha c
 
 parseString :: String -> Either String IDB
