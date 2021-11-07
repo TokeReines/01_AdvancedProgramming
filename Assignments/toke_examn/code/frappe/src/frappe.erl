@@ -81,7 +81,8 @@ init(Cap) ->
       State = #{
         cap => Cap,
         lru => queue:new(), 
-        items => #{}
+        items => #{},
+        transformers => #{}
       },
       {ok, State}
   end.
@@ -145,25 +146,43 @@ handle_call({update, Key, Value, Cost}, _From, State) ->
   end;
 
 %%% -------------------- Upsert Item -------------------------
-handle_call({upsert, Key, Value, Cost}, _From, State) -> 
-  #{ cap := Cap, lru := LRU, items := Items } = State,
-  if Cost > Cap ->
-      {reply, {error, "Cap exceeded"}, State};
-    true -> 
-      case maps:get(Key, Items, false) of 
-        {Value, Cost} -> 
-          {NLRU, NItems} = set_item(LRU, Items, Key, Value, Cost, Cap),
-          {reply, {ok}, State#{lru := NLRU, items := NItems}};
-        false ->                
-          {reply, {error, "Item not found"}, State}
-      end
+handle_call({upsert, Key, Fun}, From, State) -> 
+  #{ cap := Cap, lru := LRU, items := Items, transformers := Transformers} = State,
+  {Transformer, NewTransformers} = get_transformer(Key, Transformers),
+  NewState = State#{transformers => NewTransformers},
+  case maps:get(Key, Items, false) of 
+      {Value, Cost} -> 
+        item_transformer:transform(Transformer, From, Fun, {existing, Value}),
+        {noreply, NewState};
+      false ->                
+        item_transformer:transform(Transformer, From, Fun, new),
+        {noreply, NewState}
   end.
 
-handle_cast(_Request, _State) -> not_implemented.
+%%% -------------------- Stable -------------------------
+handle_cast({stable, Key, Ref}, State) -> 
+  #{ items := Items } = State,
+  case maps:get(Key, Items, false) of 
+      {Value, Cost, Transformer} ->
+        item_transformer:transform() ,
+        gen_statem:cast(Transformer),
+        {noreply, State};
+      false ->                
+        {noreply, State}
+  end.
 
 %%% -------------------------------------------------------
 %%% Auxiliary Functions
 %%% -------------------------------------------------------
+
+get_transformer(Key, Transformers) ->
+  case maps:get(Key, Transformers, false) of 
+    Transformer -> 
+      {Transformer, Transformers};
+    false -> 
+      NewTransformer = item_transformer:start(self()),
+      {NewTransformer, Transformers#{Key => NewTransformer}}
+  end.
 
 set_item(LRU, Items, Key, Value, Cost, Cap) -> 
   {NLRU, RItems} = make_room(LRU, Items, Key, Cost, Cap),
