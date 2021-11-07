@@ -105,17 +105,17 @@ pTDeclData =
        return $ TDRcd h r d
 
 pFDeclz :: Parser [(FName, PType)]
-pFDeclz = do pFDecl `sepBy1` symbol ","
+pFDeclz = do d <- pFDecl `sepBy1` symbol ","; return $ concat d
 
-pFDecl :: Parser (FName, PType)
+pFDecl :: Parser [(FName, PType)]
 pFDecl =
-    do f <- pFields
+    do fs <- pFields
        symbol "::"
        t <- pType
-       return $ (f, t)
+       return $ map (\f -> (f, t)) fs
 
-pFields :: Parser FName
-pFields = do fs <- pField `sepBy1` symbol ","; return $ intercalate ", " fs
+pFields :: Parser [FName]
+pFields = do pField `sepBy1` symbol ",";
 
 pTDHead :: Parser (TCName, [TVName])
 pTDHead = do c <- pTCon; t <- pTVarz; return $ (c, t)

@@ -69,6 +69,8 @@ tests = testGroup "Type tests" [
 
     testCase "Data declaration" $
       parseStringTDeclz "data T a = F { x :: a }" @?= Right [TDRcd ("T",["a"]) "F" [("x",PTVar "a")]],
+    testCase "Data declaration, multiple" $
+      parseStringTDeclz "data T a = F { x, y :: a }" @?= Right [TDRcd ("T",["a"]) "F" [("x",PTVar "a"),("y",PTVar "a")]],
     testCase "Data declaration, arrow" $
       parseStringTDeclz "data T a = F { x :: a -> a}" @?= Right [TDRcd ("T",["a"]) "F" [("x",PTApp "(->)" [PTVar "a",PTVar "a"])]],
     testCase "Data declaration" $
