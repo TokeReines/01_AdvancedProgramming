@@ -24,7 +24,7 @@ small_upsert() ->
   io:format("When looking up ~w I got ~w, and I expected {ok, [a,b]}~n",
             [key1, frappe:read(FS, key1)]),
   ok = frappe:set(FS, key2, [a,b], 2),
-  ok = frappe:upsert(FS, key2,
+  frappe:upsert(FS, key2,
                      fun({existing, Val}) ->
                          New = Val ++ [c,d],
                          {new_value, New, length(New)}
