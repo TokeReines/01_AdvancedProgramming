@@ -4,12 +4,8 @@
 compile:
 	erlc -Wall -o src src/*.erl
 
-compile_test:
-	erlc -Wall -o tests src/*.erl
-	erlc -Wall -o tests tests/*.erl
-
-run_test: compile_test
-	erl -noshell -pa tests -run test_frappe test_all
+run_test: compile
+	erl -noshell -pa src -run test_frappe test_all
 
 clean:
 	@find . -type f -name "*.beam" -delete

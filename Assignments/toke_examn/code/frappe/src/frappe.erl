@@ -1,8 +1,8 @@
 -module(frappe).
 -behaviour(gen_server).
--import(item_transformer, [start_item/2, stop_item/1, transform/4, read_sync/1, read_async/2, update/3]).
+-import(item_transformer, [start_item/2, stop_item/1, transform/3, internal_read/1, read_item/2, update/3, insert/3, state/1]).
 -import(queue, []).
--export([init/1, handle_call/3, handle_cast/2, clean_items/2]).
+-export([init/1, handle_call/3, handle_cast/2]).
 % You are allowed to split your Erlang code in as many files as you
 % find appropriate.
 % However, you MUST have a module (this file) called frappe.
@@ -68,7 +68,7 @@ upsert(FS, Key, Fun) ->
 
 -spec stable(pid(), key(), any()) -> term().
 stable(FS, Key, Ref) ->
-  gen_server:cast(FS, {stable, Key, Ref}).
+  gen_server:call(FS, {stable, Key, Ref}).
 
 -spec all_items(pid()) -> term().
 all_items(FS) ->
@@ -92,25 +92,30 @@ init(Cap) ->
       State = #{
         cap => Cap,
         lru => queue:new(), 
-        items => #{}
+        items => #{},
+        stable => #{}
       },
       {ok, State}
   end.
 
+handle_cast(_, _) ->
+  ok.
+
 %%% -------------------- Read Item -------------------------
-handle_call({read, Key}, _From, State) -> 
-  #{items := Items, lru := LRU} = State,
-  NewLRU = update_lru(Key, LRU),
+handle_call({read, Key}, From, State) -> 
+  #{items := Items} = State,
   case maps:get(Key, Items, false) of 
     false -> {reply, nothing, State};
-    {none, _C, _T} -> {reply, nothing, State#{lru := NewLRU }};
-    {Value, _C, _T} -> {reply, {ok, Value}, State#{lru := NewLRU }}
+    Transformer -> 
+      item_transformer:read_item(Transformer, From),
+      {noreply, State}
   end;
 
 %%% -------------------- All Items -------------------------
 handle_call(all_items, _From, State) -> 
   #{items := Items} = State,
-  AllItems = maps:fold(fun(Key, {Value, Cost, _T}, List) -> 
+  AllItems = maps:fold(fun(Key, Transformer, List) -> 
+    {Value, Cost} = item_transformer:internal_read(Transformer),
     case Value of
       nothing -> List;
       _ -> List ++ [{Key, Value, Cost}]
@@ -119,96 +124,142 @@ handle_call(all_items, _From, State) ->
   {reply, AllItems, State};
 
 %%% -------------------- Set Item -------------------------
-handle_call({set, Key, Value, Cost}, _From, State) -> 
-  #{ cap := Cap, lru := LRU, items := Items } = State,
+handle_call({set, Key, Value, Cost}, From, State) -> 
+  #{ cap := Cap, items := Items } = State,
   if Cost > Cap ->
     {reply, {error, "Cap exceeded"}, State};
-    true -> 
-      {NLRU, NItems} = prepare_LRU(LRU, Items, Key, Cost, Cap),
-      case maps:get(Key, NItems, false) of 
-          false -> 
-            {NewLRU, NewItems, _} = add_item(Key, Value, Cost, NItems, NLRU),
-            {reply, ok, State#{lru := NewLRU, items := NewItems}};
-          {_, _, Transformer} -> 
-            NewItems = update_item(Key, Value, Cost, Transformer, NItems),
-            {reply, ok, State#{lru := NLRU, items := NewItems}}
-        end
-  end;
-
-%%% -------------------- Insert Item -------------------------
-handle_call({insert, Key, Value, Cost}, _From, State) -> 
-  #{ cap := Cap, lru := LRU, items := Items } = State,
-  if Cost > Cap ->
-      {reply, {error, "Cap exceeded"}, State};
+    Cost =< 0 ->      
+      {reply, {error, "Cap is non-positive"}, State};
     true -> 
       case maps:get(Key, Items, false) of 
         false -> 
-          {NLRU, NItems} = prepare_LRU(LRU, Items, Key, Cost, Cap),
-          {NewLRU, NewItems, _} = add_item(Key, Value, Cost, NItems, NLRU),
-          {reply, ok, State#{lru := NewLRU, items := NewItems}};
-        {Value, Cost, _Transformer} -> 
-          {reply, {error, "Duplicate item"}, State}
+          {ok, Transformer} = item_transformer:start_item(self(), Key),
+          item_transformer:set(Transformer, Value, Cost, From),
+          NItems = add_ghost_item(Key, Transformer, Items),
+          {noreply, State#{items := NItems}};
+        Transformer -> 
+          item_transformer:set(Transformer, Value, Cost, From),
+          {noreply, State}
+      end
+  end;
+
+%%% -------------------- Insert Item -------------------------
+handle_call({insert, Key, Value, Cost}, From, State) -> 
+  #{ cap := Cap, items := Items } = State,
+  if Cost > Cap ->
+      {reply, {error, "Cap exceeded"}, State};
+    Cost =< 0 ->      
+      {reply, {error, "Cap is non-positive"}, State};
+    true -> 
+      case maps:get(Key, Items, false) of 
+        false -> 
+          {ok, Transformer} = item_transformer:start_item(self(), Key),
+          item_transformer:insert(Transformer, Value, Cost, From),
+          NItems = add_ghost_item(Key, Transformer, Items),
+          {noreply, State#{items := NItems}};
+        Transformer -> 
+          item_transformer:insert(Transformer, Value, Cost, From),
+          {noreply, State}
       end
   end;
 
 %%% -------------------- Update Item -------------------------
 handle_call({update, Key, Value, Cost}, _From, State) -> 
-  #{ cap := Cap, lru := LRU, items := Items } = State,
+  #{ cap := Cap, items := Items } = State,
   if Cost > Cap ->
       {reply, {error, "Cap exceeded"}, State};
+    Cost =< 0 ->      
+      {reply, {error, "Cap is non-positive"}, State};
     true -> 
       case maps:get(Key, Items, false) of 
         false -> {reply, {error, "Item not found"}, State};
-        {_, _, Transformer} -> 
-          {NLRU, NItems} = prepare_LRU(LRU, Items, Key, Cost, Cap),
-          NewItems = update_item(Key, Value, Cost, Transformer, NItems),
-          {reply, ok, State#{lru := NLRU, items := NewItems}}
+        Transformer -> 
+          item_transformer:update(Transformer, Value, Cost),
+          {noreply, State}
       end
   end;
 
 %%% -------------------- Upsert Item -------------------------
 handle_call({upsert, Key, Fun}, From, State) -> 
-  #{ cap := Cap, lru := LRU, items := Items} = State,
+  #{ items := Items} = State,
   case maps:get(Key, Items, false) of 
-      false ->   
-        % Cost (0) and Value (none) is not yet known
-        {_, NItems} = prepare_LRU(LRU, Items, Key, 0, Cap),
-        {NQueue, NItems, Transformer} = add_item(Key, none, 0, NItems, LRU),
-        item_transformer:transform(Transformer, From, Fun, new),
-        {noreply, State#{items => NItems, lru => NQueue}};
-      {Value, _, Transformer} ->        
-        item_transformer:transform(Transformer, From, Fun, {existing, Value}),
+      false ->
+        {ok, Transformer} = item_transformer:start_item(self(), Key),
+        NItems = add_ghost_item(Key, Transformer, Items),
+        item_transformer:upsert(Transformer, Fun, From),
+        {noreply, State#{items := NItems}};
+      Transformer ->    
+        item_transformer:upsert(Transformer, Fun, From),
         {noreply, State}
+  end;
+
+%%% -------------------- INTERNAL API -------------------------
+handle_call({write, Key, Cost, Value, ReadWrite}, _, State) -> 
+  #{ cap := Cap, lru := LRU, items := Items, stable := Stable} = State,
+  if Cost > Cap ->
+      {reply, {error, "Cap exceeded"}, State};
+    Cost =< 0 ->      
+      {reply, {error, "Cap is non-positive"}, State};
+    true ->  
+      case ReadWrite of
+        read -> 
+          NLRU = update_lru(Key, LRU),
+          NStable = handle_stable(Key, Value, Stable),
+          {reply, ok, State#{lru := NLRU, stable := NStable}};
+        write ->
+          {NLRU, NItems} = write(LRU, Items, Key, Cost, Cap),
+          NStable = handle_stable(Key, Value, Stable),
+          {reply, ok, State#{lru := NLRU, items := NItems, stable := NStable}}
+      end
   end;
 
 %%% -------------------- Stable -------------------------
 handle_call({stable, Key, Ref}, From, State) -> 
-  #{ items := Items } = State,
-  case maps:get(Key, Items, false) of 
-      false ->                
-        {reply, nothing, State};
-      {Value, Cost, Transformer} ->
-        item_transformer:stable(read) ,
-        gen_statem:cast(Transformer),
-        {noreply, State}
+  #{ items := Items, stable := Stable } = State,
+  NStable = update_stable(Key, Ref, From, Stable),
+  case maps:get(Key, Items, false) of
+      false -> 
+        {noreply, State#{stable := NStable}};
+      Transformer ->
+        item_transformer:read_item(Transformer, From),
+        {noreply, State#{stable := NStable}}
   end.
 
 %%% -------------------------------------------------------
 %%% Auxiliary Functions
 %%% -------------------------------------------------------
 
-prepare_LRU(LRU, Items, Key, Cost, Cap) -> 
-  {NLRU, NItems} = make_room(LRU, Items, Key, Cost, Cap),
-  ULRU = update_lru(Key, NLRU),
-  {ULRU, NItems}.
+-spec handle_stable(key(), value(), map()) -> map().
+handle_stable(Key, Value, Stable) ->
+  Stabled = maps:get(Key, Stable, []),
+  lists:foreach(fun({From, Ref}) -> 
+    gen_server:reply(From, {Ref, Value})
+  end, Stabled),
+  maps:without([Key], Stable).
 
-add_item(Key, Value, Cost, Items, Queue) ->
-  {ok, Transformer} = item_transformer:start_item(self(), Key),
-  NQueue = queue:in(Key, Queue),
-  {NQueue, Items#{Key => {Value, Cost, Transformer}}, Transformer}.
+-spec update_stable(key(), term(), term(), map()) -> map().
+update_stable(Key, Ref, From, Stable) ->
+  case maps:get(Key, Stable, false) of
+    false -> 
+      Stable#{Key => [{From, Ref}]};
+    IStable -> 
+      Stable#{Key := IStable ++ [{From, Ref}]}
+  end.
 
-update_item(Key, Value, Cost, Transformer, Items) ->
-  Items#{Key => {Value, Cost, Transformer}}.
+% Update LRU Cache
+write(LRU, Items, Key, Cost, Cap) -> 
+  % Prevent removal of the Key itself if Cap is exceeded and Key is LRU
+  NLRU = queue:delete(Key, LRU),
+  Transformer = maps:get(Key, Items),
+  NItems = maps:remove(Key, Items),
+  {ULRU, UItems} = make_room(NLRU, NItems, Cost, Cap),
+  add_item(Key, Cost, Transformer, ULRU, UItems).
+
+add_ghost_item(Key, Transformer, Items) ->
+  Items#{Key => Transformer}.
+
+add_item(Key, _Cost, Transformer, LRU, Items) ->
+  {queue:in(Key, LRU), Items#{Key => Transformer}}.
 
 update_lru(Key, Queue) ->
   case queue:member(Key, Queue) of
@@ -218,17 +269,15 @@ update_lru(Key, Queue) ->
   end.
 
 get_load(Items) ->
-  maps:fold(fun(_K, {_, Cost, _}, Sum) -> 
-    Cost + Sum 
+  maps:fold(fun(_K, T, Sum) -> 
+    {_, Cost} = item_transformer:internal_read(T),
+    Cost + Sum     
   end, 0, Items).
 
-make_room(Queue, Items, Key, Cost, Cap) -> 
-  % Prevent removal of the Key itself if Cap is exceeded and Key is LRU
-  NQueue = queue:delete(Key, Queue),
-  % Avoid duplicates by removing it
+make_room(Queue, Items, Cost, Cap) ->
   Load = get_load(Items),
   % Make room in the queue for the new Cost
-  {NLRU, RKeys} = pop_to_cap(NQueue, Items, Cost, Cap, Load, []),
+  {NLRU, RKeys} = pop_to_cap(Queue, Items, Cost, Cap, Load, []),
   NItems = clean_items(RKeys, Items),
   {NLRU, NItems}.
 
@@ -240,7 +289,8 @@ pop_to_cap(Queue, Items, Cost, Cap, Load, RKeys) ->
       case queue:out(Queue) of
         {{value, Key}, NewQueue} -> 
           % Key will always be in dictionary here, no need for a "case of"
-          {IValue, ICost, _} = maps:get(Key, Items),
+          Transformer = maps:get(Key, Items),
+          {_, ICost} = item_transformer:internal_read(Transformer),
           pop_to_cap(NewQueue, Items, Cost, Cap, Load - ICost, RKeys ++ [Key]);
         {empty, NewQueue} -> 
           {NewQueue, RKeys}
@@ -253,7 +303,7 @@ clean_items(RKeys, Items) ->
     case maps:get(Key, Items, false) of 
         false -> 
           ok;
-        {_, _, Transformer} -> 
+        Transformer -> 
           item_transformer:stop_item(Transformer)
     end
   end, RKeys),
