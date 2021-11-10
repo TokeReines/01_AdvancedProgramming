@@ -13,6 +13,7 @@ eunit_tests() ->
             test_insert_break_cap(),
             test_insert_duplicate(),
             test_insert_duplicate_break_cap(),
+            test_update(),
             test_all_items(),
             test_all_items_break_cap(),
             test_upsert_as_update(),
@@ -76,6 +77,19 @@ test_insert() ->
      fun() ->
       {ok, FS} = frappe:fresh(5),      
       ?assertMatch(ok, frappe:insert(FS, "a", "a", 3)),
+      frappe:stop(FS)
+    end
+    }.
+
+test_update() -> 
+    {"Test insert",
+     fun() ->
+      {ok, FS} = frappe:fresh(5),      
+      ?assertMatch({error, _}, frappe:update(FS, "a", "a", 3)),
+      ?assertMatch(ok, frappe:insert(FS, "a", "a", 3)),
+      ?assertMatch({ok, "a"}, frappe:read(FS, "a")),
+      ?assertMatch(ok, frappe:update(FS, "a", "b", 3)),
+      ?assertMatch({ok, "b"}, frappe:read(FS, "a")),
       frappe:stop(FS)
     end
     }.

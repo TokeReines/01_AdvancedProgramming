@@ -32,17 +32,17 @@ mktrans(to_list, Cost) ->
       ({existing, OldValue}) -> {new_value, [OldValue], Cost}
   end.
 
-sym_mktrans(Opr, Args) -> {call, ?MODULE, mktrans, [Opr, Args]}.
+sym_mktrans(Opr) -> {call, ?MODULE, mktrans, [Opr, args_gen(Opr)]}.
 
 atom_gen() -> eqc_gen:elements([a,b,c,d,e,f,g,h]).
 cost_gen() -> choose(1,5).
-
+int_gen() -> choose(1,5).
 opr_gen() -> elements([add, update, set_cost, to_list]).
 
 args_gen(Opr) -> 
   case Opr of
     add -> cost_gen();
-    update -> atom_gen() ;
+    update -> cost_gen() ;
     set_cost -> cost_gen();
     to_list -> cost_gen()
   end.
@@ -51,5 +51,9 @@ terminating_transformation(KeyGen) ->
   ?LET(
     {Key, Opr}, 
     {KeyGen, opr_gen()}, 
-    {Key, sym_mktrans(Opr, args_gen(Opr))}
+    {Key, sym_mktrans(Opr)}
   ).
+
+eval() ->
+  A = {call,eqc_frappe,mktrans,[add,2]},
+  eval(A).

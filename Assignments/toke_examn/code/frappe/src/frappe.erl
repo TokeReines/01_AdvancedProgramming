@@ -164,7 +164,7 @@ handle_call({insert, Key, Value, Cost}, From, State) ->
   end;
 
 %%% -------------------- Update Item -------------------------
-handle_call({update, Key, Value, Cost}, _From, State) -> 
+handle_call({update, Key, Value, Cost}, From, State) -> 
   #{ cap := Cap, items := Items } = State,
   if Cost > Cap ->
       {reply, {error, "Cap exceeded"}, State};
@@ -174,7 +174,7 @@ handle_call({update, Key, Value, Cost}, _From, State) ->
       case maps:get(Key, Items, false) of 
         false -> {reply, {error, "Item not found"}, State};
         Transformer -> 
-          item_transformer:update(Transformer, Value, Cost),
+          item_transformer:update(Transformer, Value, Cost, From),
           {noreply, State}
       end
   end;
