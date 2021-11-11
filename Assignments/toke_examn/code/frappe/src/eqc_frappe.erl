@@ -2,14 +2,10 @@
 
 -include_lib("eqc/include/eqc.hrl").
 
-%% The following two lines are super bad style, except during development
--compile(nowarn_export_all).
--compile(export_all).
+-export([mktrans_impl/2, sym_mktrans_impl/1, terminating_transformation_impl/1]).
+-import(frappe, [fresh/1, set/4, insert/4, read/2]).
 
-gen_opr() ->
-  elements([append]).
-
-mktrans(add, Value) -> 
+mktrans_impl(add, Value) -> 
    fun (new) -> 
         {new_value, Value, Value};
       ({existing, OldValue}) ->
@@ -17,27 +13,27 @@ mktrans(add, Value) ->
       {new_value, NewValue, NewValue}
   end;
 
-mktrans(update, Value) -> 
+mktrans_impl(update, Value) -> 
    fun (new) -> {new_value, Value, 1};
       ({existing, _}) -> {new_value, Value, 1}
   end;
 
-mktrans(set_cost, Cost) -> 
+mktrans_impl(set_cost, Cost) -> 
   fun (new) -> {new_value, Cost, Cost};
       ({existing, OldValue}) -> {new_value, OldValue, Cost}
   end;
 
-mktrans(to_list, Cost) -> 
+mktrans_impl(to_list, Cost) -> 
   fun (new) -> {new_value, [], Cost};
       ({existing, OldValue}) -> {new_value, [OldValue], Cost}
   end.
 
-sym_mktrans(Opr) -> {call, ?MODULE, mktrans, [Opr, args_gen(Opr)]}.
+sym_mktrans_impl(Opr) -> {call, ?MODULE, mktrans_impl, [Opr, args_gen(Opr)]}.
 
 atom_gen() -> eqc_gen:elements([a,b,c,d,e,f,g,h]).
 cost_gen() -> choose(1,5).
 int_gen() -> choose(1,5).
-opr_gen() -> elements([add, update, set_cost, to_list]).
+opr_gen() -> elements([to_list]). % add, update, set_cost, 
 
 args_gen(Opr) -> 
   case Opr of
@@ -47,13 +43,41 @@ args_gen(Opr) ->
     to_list -> cost_gen()
   end.
 
-terminating_transformation(KeyGen) ->
+terminating_transformation_impl(KeyGen) ->
   ?LET(
     {Key, Opr}, 
     {KeyGen, opr_gen()}, 
-    {Key, sym_mktrans(Opr)}
+    {Key, sym_mktrans_impl(Opr)}
   ).
 
-eval() ->
-  A = {call,eqc_frappe,mktrans,[add,2]},
-  eval(A).
+
+%%% ----------------------------------------
+%%% ----------- Extra props! ---------------
+%%% ----------------------------------------
+value() -> nat().
+valid_cost() -> choose(1,2).
+cost() -> choose(0,2).
+key() -> elements([a,b,c,d,e,f,g,h]).
+
+% frappe_sym(Key, Value, Cost) -> 
+%     ?LAZY(
+%         frequency([{1, {call, frappe, fresh, [9999]}},
+%             {8, ?LETSHRINK([FS], [frappe_sym(Key, Value, Cost)], 
+%                 {call, frappe, insert, [FS, Key, Value, Cost]})},
+%             {4, ?LETSHRINK([FS], [frappe_sym(Key, Value, Cost)], 
+%                 {call, frappe, set, [FS, Key, Value, Cost]})}
+%         ])
+%     ).
+% prop_insert_read() ->
+%     ?FORALL({FS, Key, Value, Cost},
+%         {frappe_sym(key(), value(), cost()), key(), value(), valid_cost()},
+%         begin
+%           %frappe:insert(FS, Key, Value, Cost),
+%           FS1 = eval(FS),
+%           true
+%           % case frappe:read(FS1, Key) of
+%           %   {ok, Value} -> true;
+%           %   _ -> false
+%           % end
+%         end
+%     ).

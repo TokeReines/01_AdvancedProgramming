@@ -1,6 +1,6 @@
 -module(test_frappe_eunit).
 -include_lib("eunit/include/eunit.hrl").
--export([eunit_tests/0]).
+-export([eunit_tests/0, upsert_list/2, toke/0]).
 
 eunit_tests() -> 
       {"Basic behavior",  spawn,
@@ -19,7 +19,9 @@ eunit_tests() ->
             test_upsert_as_update(),
             test_upsert_as_new(),
             test_upsert_long_running_break_by_set(),
-            test_stable()
+            test_stable(),
+            test_upsert_break_cap(),
+            test_stable_ongoing_write()
           ]
         }.
 
@@ -176,11 +178,25 @@ test_upsert_as_new() ->
     end
     }.
 
+test_upsert_break_cap() -> 
+    {"Test upsert as new",
+     fun() ->
+      {ok, FS} = frappe:fresh(5),      
+      ?assertMatch({error, _}, frappe:upsert(FS, "a", upsert_list([a, b], 20))),
+      % Insert is queued and run after upsert, which then is on an existing key
+      ?assertMatch(ok, frappe:insert(FS, "a", [x, y], 2)),
+      ?assertMatch({ok, [x, y]}, frappe:read(FS, "a")),
+      ?assertMatch(ok, frappe:upsert(FS, "a", upsert_list([c, d], 2))),
+      ?assertMatch({ok, [x, y, c, d]}, frappe:read(FS, "a")),
+      frappe:stop(FS)
+    end
+    }.
+
 test_upsert_long_running_break_by_set() -> 
   {"Test slow upsert interrupted by set",
      fun() ->
       {ok, FS} = frappe:fresh(5),    
-      long_running_upsert_worker(FS, "a"),
+      long_running_upsert_worker(FS, "a", "a"),
       % Give process 20 ms to call the upsert
       timer:sleep(20),
       ?assertMatch(ok, frappe:set(FS, "a", crazy, 3)),
@@ -193,13 +209,49 @@ test_stable() ->
   {"Test stable",
      fun() ->
       {ok, FS} = frappe:fresh(5),
-      stable_worker(FS, "a", flemish),
-      stable_worker(FS, "a", monchino),
-      timer:sleep(50),
+      {P1, W1} = wait_point(),
+      stable_worker(FS, "a", flemish, P1),
+      {P2, W2} = wait_point(),
+      stable_worker(FS, "a", monchino, P2),
       ?assertMatch(ok, frappe:insert(FS, "a", "a", 3)),
+      Stable1 = W1(),
+      ?assertMatch(Stable1, {flemish, "a"}),
+      Stable2 = W2(),
+      ?assertMatch(Stable2, {monchino, "a"}),
       frappe:stop(FS)
       end
     }.
+
+test_stable_ongoing_write() -> 
+  {"Test stable, ongoing write",
+     fun() ->
+      {ok, FS} = frappe:fresh(5),
+      long_running_upsert_worker(FS, "a", "a"),
+      spawn(fun() -> frappe:update(FS, "a", "not a", 2) end),
+      {P1, W1} = wait_point(),
+      stable_worker(FS, "a", flemish, P1),
+      {P2, W2} = wait_point(),
+      stable_worker(FS, "a", monchino, P2),
+      Stable1 = W1(),
+      ?assertMatch(Stable1, {flemish, "not a"}),
+      Stable2 = W2(),
+      ?assertMatch(Stable2, {monchino, "not a"}),
+      frappe:stop(FS)
+      end
+    }.
+
+wait_point() ->
+  Me = self(),
+  Ref = make_ref(),
+  {fun(Value) -> Me ! {wait_point, Ref, Value} end,
+   fun() -> receive {wait_point, Ref, Value} -> Value end end}.
+
+test() ->
+  {ok, A} = rps:start(),
+  {Point, WaitFor} = wait_point(),
+  spawn((fun() -> rps:queue_up(A, "a", 1), Point() end)),
+  WaitFor(),
+  rps:statistics(A).
 
 upsert_list(Value, Cost) ->
   fun (new) -> 
@@ -218,21 +270,23 @@ upsert_bad_format() ->
 
 upsert_long_running(Value, Cost) ->
   fun (new) -> 
-        timer:sleep(1000000),
+        timer:sleep(200),
         {new_value, Value, Cost};
       ({existing, OldValue}) ->
-        timer:sleep(1000000),
+        timer:sleep(200),
         NewValue = OldValue ++ Value,
         {new_value, NewValue, Cost}
   end.
 
-stable_worker(FS, Key, Ref) ->
+stable_worker(FS, Key, Ref, WaitPoint) ->
   spawn(fun() ->
-    Stable = frappe:stable(FS, Key, Ref),
-    ?assertMatch({Ref, _}, Stable)
+    frappe:stable(FS, Key, Ref),
+    receive
+      {NRef, NValue} -> WaitPoint({NRef, NValue})
+    end
   end).
 
-long_running_upsert_worker(FS, Key) ->
+long_running_upsert_worker(FS, Key, Value) ->
   spawn(fun() ->
-    frappe:upsert(FS, Key, upsert_long_running([a, b], 2))
+    frappe:upsert(FS, Key, upsert_long_running(Value, 2))
   end).

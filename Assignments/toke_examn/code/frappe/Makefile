@@ -2,10 +2,10 @@
 # Erlang makefile example: https://gist.github.com/leandrosilva/866072/87c1bf000f877db06edcad04b42e7797d6107f72
 
 compile:
-	erlc -Wall -o src src/*.erl
+	erlc -o ./src -I src
 
 run_test: compile
-	erl -noshell -pa src -run test_frappe test_all
+	erl -noshell -pa ./src -run test_frappe test_all
 
-clean:
-	@find . -type f -name "*.beam" -delete
+# clean:
+# 	@find . -type f -name "*.beam" -delete
