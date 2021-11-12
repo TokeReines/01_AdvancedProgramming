@@ -76,7 +76,6 @@ all_items(FS) ->
 
 -spec stop(pid()) -> term().
 stop(FS) ->
-  %gen_server:cast(FS, stop),
   gen_server:stop(FS).
 
 
@@ -98,15 +97,8 @@ init(Cap) ->
       {ok, State}
   end.
 
-%%% --------------------- STOP -------------------
-handle_cast (stop, State) ->
-  #{items := Items} = State,
-  maps:foreach(fun(Key, Transformer) -> 
-    item_transformer:stop_item(Transformer)
-  end, Items),
-  {reply, "stopping", State};
-
-handle_cast(_, _) ->
+%%% --------------------- Not used -------------------
+handle_cast (_, _) ->
   ok.
 
 %%% -------------------- Read Item -------------------------
@@ -224,7 +216,7 @@ handle_call({write, Key, Cost, Value, ReadWrite}, _, State) ->
 -spec handle_stable(key(), value(), map()) -> map().
 handle_stable(Key, Value, Stable) ->
   Stabled = maps:get(Key, Stable, []),
-  lists:foreach(fun({From, Ref}) -> 
+  lists:foreach(fun({From, Ref}) ->
     gen_server:reply(From, {Ref, Value})
   end, Stabled),
   maps:without([Key], Stable).

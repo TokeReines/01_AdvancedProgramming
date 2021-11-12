@@ -1,13 +1,13 @@
 -module(test_frappe_eunit).
 -include_lib("eunit/include/eunit.hrl").
--export([eunit_tests/0, upsert_list/2, toke/0]).
+-export([eunit_tests/0, upsert_list/2]).
 
 eunit_tests() -> 
       {"Basic behavior",  spawn,
           [ test_fresh(),
-            test_set(),
             test_read(),
             test_read_lru(),
+            test_set(),
             test_set_break_cap(),
             test_insert(),
             test_insert_break_cap(),
@@ -19,8 +19,8 @@ eunit_tests() ->
             test_upsert_as_update(),
             test_upsert_as_new(),
             test_upsert_long_running_break_by_set(),
-            test_stable(),
             test_upsert_break_cap(),
+            test_stable(),
             test_stable_ongoing_write()
           ]
         }.
@@ -47,6 +47,7 @@ test_read() ->
       {ok, FS} = frappe:fresh(5),      
       ?assertMatch(ok, frappe:set(FS, "a", "value", 3)),
       ?assertMatch({ok, "value"}, frappe:read(FS, "a")),
+      ?assertMatch(nothing, frappe:read(FS, "b")),
       frappe:stop(FS)
     end
     }.
@@ -245,13 +246,6 @@ wait_point() ->
   Ref = make_ref(),
   {fun(Value) -> Me ! {wait_point, Ref, Value} end,
    fun() -> receive {wait_point, Ref, Value} -> Value end end}.
-
-test() ->
-  {ok, A} = rps:start(),
-  {Point, WaitFor} = wait_point(),
-  spawn((fun() -> rps:queue_up(A, "a", 1), Point() end)),
-  WaitFor(),
-  rps:statistics(A).
 
 upsert_list(Value, Cost) ->
   fun (new) -> 

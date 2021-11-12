@@ -11,7 +11,7 @@
 %%% -------------------------------------------------------
 
 start_item(FS, Key) ->
-    gen_statem:start(?MODULE, {FS, Key}, []).
+    gen_statem:start_link(?MODULE, {FS, Key}, []).
 
 %%% -------------------- Sync Calls -------------------------
 stop_item(ITrans) ->
@@ -124,7 +124,7 @@ idle(cast, {read, From}, Data) ->
     end;
 
 idle(cast, {stable, From, Ref}, Data) ->
-    {FS, Key, Value, Cost} = Data,
+    {_, _, Value, Cost} = Data,
     case Cost of
         0 -> 
             io:format("No data"),
